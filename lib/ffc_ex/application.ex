@@ -1,10 +1,10 @@
 defmodule FfcEx.Application do
   use Application
-  @moduledoc false
 
   @impl true
   def start(_type, _args) do
     children = [
+      FfcEx.GameLobbies,
       FfcEx.GameSupervisor,
       FfcEx.GameRegistry,
       FfcEx.BaseConsumer

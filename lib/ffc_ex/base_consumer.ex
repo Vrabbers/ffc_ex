@@ -28,8 +28,6 @@ defmodule FfcEx.BaseConsumer do
         end
       end
     end
-
-    Logger.info("msg received: #{inspect(msg)}")
   end
 
   @impl true

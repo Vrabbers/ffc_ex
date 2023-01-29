@@ -1,0 +1,12 @@
+defmodule FfcEx.Game do
+  use GenServer
+
+  def start_link([]) do
+    GenServer.start_link(__MODULE__, [])
+  end
+
+  @impl true
+  def init([]) do
+    {:ok, {}}
+  end
+end

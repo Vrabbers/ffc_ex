@@ -1,13 +1,12 @@
 defmodule FfcEx.GameRegistry do
   use GenServer
   alias FfcEx.GameRegistry
-  alias Nostrum.Struct.Channel
-  alias Nostrum.Snowflake
+  alias FfcEx.GameLobbies.Lobby
+  require Logger
 
   # Types registration
   @type key :: non_neg_integer()
-  @type game_registration ::
-          {pid :: pid(), guild :: Channel.id(), user_id :: Snowflake.t(), closed :: boolean()}
+  @type game_registration :: {pid(), Lobby.t()}
 
   defstruct current_id: 1, games: %{}, references: %{}
   @opaque games_map() :: %{required(key()) => game_registration()}
@@ -25,8 +24,23 @@ defmodule FfcEx.GameRegistry do
   end
 
   # Server-side
-  @spec init([]) :: {:ok, state()}
+  @impl true
   def init([]) do
     {:ok, %GameRegistry{}}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, pid, reason}, state) do
+    {id, references} = Map.pop(state.references, ref)
+    games = Map.delete(state.games, id)
+    Logger.info("Game #{id}, PID: #{pid} closed (#{reason})")
+    {:noreply, %{state | games: games, references: references}}
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    require Logger
+    Logger.debug("Unknown message received by GameRegistry: #{inspect(msg)}")
+    {:noreply, state}
   end
 end
