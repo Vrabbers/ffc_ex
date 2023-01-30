@@ -21,7 +21,7 @@ defmodule FfcEx.BaseConsumer do
 
         case command do
           "ping" ->
-            Api.create_message(msg.channel_id, "hej!")
+            Api.create_message(msg.channel_id, "pong from ffc_ex!")
 
           _ ->
             :ignore

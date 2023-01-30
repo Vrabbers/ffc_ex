@@ -1,21 +1,14 @@
 defmodule FfcEx.GameRegistry do
   use GenServer
-  alias FfcEx.GameRegistry
   alias FfcEx.GameLobbies.Lobby
   require Logger
 
   # Types registration
-  @type key :: non_neg_integer()
-  @type game_registration :: {pid(), Lobby.t()}
+  @type game_registration() :: {pid(), Lobby.t()}
 
-  defstruct current_id: 1, games: %{}, references: %{}
-  @opaque games_map() :: %{required(key()) => game_registration()}
-  @opaque references_map() :: %{required(reference()) => key()}
-  @opaque state() :: %__MODULE__{
-            current_id: key(),
-            games: games_map(),
-            references: references_map()
-          }
+  @opaque games_map() :: %{required(Lobby.id()) => game_registration()}
+  @opaque references_map() :: %{required(reference()) => Lobby.id()}
+  @opaque state() :: {games :: games_map(), references :: references_map()}
 
   # Client-side
   @spec start_link([]) :: GenServer.on_start()
@@ -25,16 +18,18 @@ defmodule FfcEx.GameRegistry do
 
   # Server-side
   @impl true
+  @spec init([]) :: {:ok, state()}
   def init([]) do
-    {:ok, %GameRegistry{}}
+    {:ok, {%{}, %{}}}
   end
 
   @impl true
-  def handle_info({:DOWN, ref, :process, pid, reason}, state) do
-    {id, references} = Map.pop(state.references, ref)
-    games = Map.delete(state.games, id)
-    Logger.info("Game #{id}, PID: #{pid} closed (#{reason})")
-    {:noreply, %{state | games: games, references: references}}
+  @spec handle_info({:DOWN, reference(), :process, pid(), term()}, state()) :: {:noreply, state()}
+  def handle_info({:DOWN, ref, :process, pid, reason}, {games, references}) do
+    {id, references} = Map.pop(references, ref)
+    games = Map.delete(games, id)
+    Logger.info("Game #{id}, PID: #{pid} closed (reason: #{reason})")
+    {:noreply, {games, references}}
   end
 
   @impl true
