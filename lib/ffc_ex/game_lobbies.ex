@@ -4,6 +4,8 @@ defmodule FfcEx.GameLobbies do
   alias Nostrum.Struct.Channel
   alias Nostrum.Struct.User
   alias FfcEx.Lobby
+  alias Nostrum.Api
+  require Logger
 
   @opaque state() :: {%{required(Channel.id()) => Lobby.t()}, current_id :: Lobby.id()}
 
@@ -13,7 +15,7 @@ defmodule FfcEx.GameLobbies do
   end
 
   @spec join(Channel.id(), User.id()) ::
-          {:new, Lobby.id()} | {:joined, Lobby.id()} | {:already_joined, Lobby.id()}
+          {:new, Lobby.id(), DateTime.t()} | {:joined, Lobby.id()} | {:already_joined, Lobby.id()}
   def join(channel, user) do
     GenServer.call(__MODULE__, {:join, channel, user})
   end
@@ -21,6 +23,11 @@ defmodule FfcEx.GameLobbies do
   @spec spectate(Channel.id(), User.id()) :: {:spectating, Lobby.id()} | :cannot_spectate
   def spectate(channel, user) do
     GenServer.call(__MODULE__, {:spectate, channel, user})
+  end
+
+  @spec close(Channel.id(), User.id()) :: {:closed, Lobby} | :cannot_close | :player_count_invalid
+  def close(channel, user) do
+    GenServer.call(__MODULE__, {:close, channel, user})
   end
 
   ## Server side
@@ -39,7 +46,9 @@ defmodule FfcEx.GameLobbies do
         new_lobby = %Lobby{id: current_id, starting_user: user, players: [user]}
         new_lobbies = Map.put(lobbies, channel, new_lobby)
         new_id = current_id + 1
-        {:reply, {:new, current_id}, {new_lobbies, new_id}}
+        timeout = DateTime.add(DateTime.utc_now(), 5, :minute)
+        Process.send_after(self(), {:time_out_lobby, channel}, 5 * 60 * 1000)
+        {:reply, {:new, current_id, timeout}, {new_lobbies, new_id}}
 
       lobby.starting_user == user || Enum.any?(lobby.players, &(&1 == user)) ->
         {:reply, {:already_joined, lobby.id}, state}
@@ -66,5 +75,45 @@ defmodule FfcEx.GameLobbies do
       new_lobbies = Map.put(lobbies, channel, new_lobby)
       {:reply, {:spectating, lobby.id}, {new_lobbies, current_id}}
     end
+  end
+
+  @impl true
+  def handle_call({:close, channel, user}, _from, {lobbies, current_id} = state) do
+    lobby = lobbies[channel]
+
+    cond do
+      lobby == nil || lobby.starting_user != user ->
+        {:reply, :cannot_close, state}
+
+      !FfcEx.Game.playercount_valid?(lobby.players |> length) ->
+        {:reply, :player_count_invalid, state}
+
+      true ->
+        new_lobbies = Map.delete(lobbies, channel)
+        {:reply, {:closed, lobby}, {new_lobbies, current_id}}
+    end
+  end
+
+  @impl true
+  def handle_info({:time_out_lobby, channel}, {lobbies, current_id} = state) do
+    lobby = lobbies[channel]
+
+    if lobby != nil do
+      new_lobbies = Map.delete(lobbies, channel)
+
+      Task.start(fn ->
+        Api.create_message(channel, "Lobby \##{lobby.id} timed out and has been disbanded.")
+      end)
+
+      {:noreply, {new_lobbies, current_id}}
+    else
+      {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    Logger.debug("Unknown message received by FfcEx.GameLobbies: #{inspect(msg)}")
+    {:noreply, state}
   end
 end
