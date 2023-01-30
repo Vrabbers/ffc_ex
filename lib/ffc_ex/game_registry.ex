@@ -1,7 +1,8 @@
 defmodule FfcEx.GameRegistry do
   use GenServer
-  alias FfcEx.GameLobbies.Lobby
   require Logger
+
+  alias FfcEx.GameLobbies.Lobby
 
   # Types registration
   @type game_registration() :: {pid(), Lobby.t()}
