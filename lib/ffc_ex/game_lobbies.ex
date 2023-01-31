@@ -25,7 +25,8 @@ defmodule FfcEx.GameLobbies do
     GenServer.call(__MODULE__, {:spectate, channel, user})
   end
 
-  @spec close(Channel.id(), User.id()) :: {:closed, Lobby} | :cannot_close | :player_count_invalid
+  @spec close(Channel.id(), User.id()) ::
+          {:closed, Lobby.t()} | :cannot_close | :player_count_invalid
   def close(channel, user) do
     GenServer.call(__MODULE__, {:close, channel, user})
   end
@@ -85,7 +86,7 @@ defmodule FfcEx.GameLobbies do
       lobby == nil || lobby.starting_user != user ->
         {:reply, :cannot_close, state}
 
-      !FfcEx.Game.playercount_valid?(lobby.players |> length) ->
+      !FfcEx.Game.playercount_valid?(length(lobby.players)) ->
         {:reply, :player_count_invalid, state}
 
       true ->
