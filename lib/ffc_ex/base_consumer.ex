@@ -48,13 +48,14 @@ defmodule FfcEx.BaseConsumer do
 
     embed = %Embed{
       title: "FFCex v#{Keyword.fetch!(Application.spec(:ffc_ex), :vsn)}",
-      description:
-        "**API latency:** #{ms}ms\n" <>
-          "**Erlang/OTP release:** #{System.otp_release()}\n" <>
-          "**Elixir version:** #{System.version()}\n" <>
-          "**Memory usage:** #{div(:erlang.memory(:total), 1_000_000)}MB",
+      description: """
+      **API latency:** #{ms}ms
+      **Erlang/OTP release:** #{System.otp_release()}
+      **Elixir version:** #{System.version()}
+      **Memory usage:** #{(:erlang.memory(:total) / 1_000_000) |> :erlang.float_to_binary(decimals: 2)}MB
+      """,
       timestamp: DateTime.to_iso8601(DateTime.utc_now()),
-      color: 0xFF3030
+      color: Application.fetch_env!(:ffc_ex, :color)
     }
 
     Api.edit_message(message, content: "", embed: embed)
@@ -63,39 +64,69 @@ defmodule FfcEx.BaseConsumer do
   defp join(msg) do
     case GameLobbies.join(msg.channel_id, msg.author.id) do
       {:new, id, timeout} ->
-        Api.create_message(
-          msg.channel_id,
-          "Created lobby \##{id}, etc. etc. Will timeout <t:#{DateTime.to_unix(timeout)}:R>"
-        )
+        prefix = Application.fetch_env!(:ffc_ex, :prefix)
+
+        embed = %Embed{
+          title: "Final Fantastic Card",
+          description: """
+          <@#{msg.author.id}> has started game \##{id}!
+          - To join, type `#{prefix}join`;
+          - To spectate the game, type `#{prefix}spectate`;
+          - Once everyone's in, <@#{msg.author.id}> can use `#{prefix}close` to close the lobby and start the game!
+          *The lobby will timeout <t:#{DateTime.to_unix(timeout)}:R>.*
+          """,
+          timestamp: DateTime.to_iso8601(DateTime.utc_now()),
+          color: Application.fetch_env!(:ffc_ex, :color)
+        }
+
+        Api.create_message(msg.channel_id, embeds: [embed])
 
       {:joined, id} ->
-        Api.create_message(msg.channel_id, "Joined game \##{id}")
+        Api.create_message(
+          msg.channel_id,
+          "**#{msg.author.username}\#** has joined lobby \##{id}."
+        )
 
       {:already_joined, id} ->
-        Api.create_message(msg.channel_id, "Already joined game \##{id}")
+        Api.create_message(msg.channel_id, "You have already joined game \##{id}!")
     end
   end
 
   defp spectate(msg) do
     case GameLobbies.spectate(msg.channel_id, msg.author.id) do
       {:spectating, id} ->
-        Api.create_message(msg.channel_id, "Spectating game \##{id}")
+        Api.create_message(
+          msg.channel_id,
+          "**#{msg.author.username}\#** is spectating lobby \##{id}."
+        )
 
       :cannot_spectate ->
-        Api.create_message(msg.channel_id, "Cannot spectate game in this channel")
+        Api.create_message(msg.channel_id, "Cannot spectate game!")
+
+      :already_spectating ->
+        Api.create_message(msg.channel.id, "You are already spectating the game!")
     end
   end
 
   defp close(msg) do
     case GameLobbies.close(msg.channel_id, msg.author.id) do
       {:closed, lobby} ->
-        Api.create_message(msg.channel_id, inspect(lobby))
+        Api.create_message(
+          msg.channel_id,
+          "**Lobby \##{lobby.id}** was closed and the game is starting."
+        )
 
       :cannot_close ->
-        Api.create_message(msg.channel_id, "Cannot close lobby as you are not the owner or it doesn't exist.")
+        Api.create_message(
+          msg.channel_id,
+          "Cannot close lobby as you are not the owner or it doesn't exist."
+        )
 
       :player_count_invalid ->
-        Api.create_message(msg.channel_id, "Cannot close lobby as the number of players is invalid.")
+        Api.create_message(
+          msg.channel_id,
+          "Cannot close lobby as the number of players is invalid."
+        )
     end
   end
 end

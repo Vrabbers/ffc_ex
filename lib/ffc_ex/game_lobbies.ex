@@ -20,7 +20,8 @@ defmodule FfcEx.GameLobbies do
     GenServer.call(__MODULE__, {:join, channel, user})
   end
 
-  @spec spectate(Channel.id(), User.id()) :: {:spectating, Lobby.id()} | :cannot_spectate
+  @spec spectate(Channel.id(), User.id()) ::
+          {:spectating, Lobby.id()} | :cannot_spectate | :already_spectating
   def spectate(channel, user) do
     GenServer.call(__MODULE__, {:spectate, channel, user})
   end
@@ -67,14 +68,19 @@ defmodule FfcEx.GameLobbies do
   def handle_call({:spectate, channel, user}, _from, {lobbies, current_id} = state) do
     lobby = lobbies[channel]
 
-    if lobby == nil || lobby.starting_user == user || Enum.any?(lobby.spectators, &(&1 == user)) do
-      {:reply, :cannot_spectate, state}
-    else
-      new_spectators = [user | lobby.spectators]
-      new_players = lobby.players -- [user]
-      new_lobby = %Lobby{lobby | spectators: new_spectators, players: new_players}
-      new_lobbies = Map.put(lobbies, channel, new_lobby)
-      {:reply, {:spectating, lobby.id}, {new_lobbies, current_id}}
+    cond do
+      lobby == nil || lobby.starting_user == user ->
+        {:reply, :cannot_spectate, state}
+
+      Enum.any?(lobby.spectators, &(&1 == user)) ->
+        {:reply, :already_spectating, state}
+
+      true ->
+        new_spectators = [user | lobby.spectators]
+        new_players = lobby.players -- [user]
+        new_lobby = %Lobby{lobby | spectators: new_spectators, players: new_players}
+        new_lobbies = Map.put(lobbies, channel, new_lobby)
+        {:reply, {:spectating, lobby.id}, {new_lobbies, current_id}}
     end
   end
 

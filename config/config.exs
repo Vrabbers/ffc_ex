@@ -1,7 +1,8 @@
 import Config
 
 config :ffc_ex,
-  prefix: "ffc:"
+  prefix: "ffc:",
+  color: 0xff0000
 
 config :nostrum,
   token: System.get_env("BOT_TOKEN") || File.read!("token.txt") |> String.trim(),
