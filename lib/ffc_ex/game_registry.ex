@@ -2,12 +2,13 @@ defmodule FfcEx.GameRegistry do
   use GenServer
   require Logger
 
+  alias FfcEx.GameSupervisor
   alias FfcEx.GameLobbies.Lobby
 
   # Types registration
-  @type game_registration() :: {pid(), Lobby.t()}
+  @type game() :: pid()
 
-  @opaque games_map() :: %{required(Lobby.id()) => game_registration()}
+  @opaque games_map() :: %{required(Lobby.id()) => game()}
   @opaque references_map() :: %{required(reference()) => Lobby.id()}
   @opaque state() :: {games :: games_map(), references :: references_map()}
 
@@ -15,6 +16,11 @@ defmodule FfcEx.GameRegistry do
   @spec start_link([]) :: GenServer.on_start()
   def start_link([]) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  end
+
+  @spec create_game(Lobby.t()) :: game()
+  def create_game(lobby) do
+    GenServer.call(__MODULE__, {:create_game, lobby})
   end
 
   # Server-side
@@ -25,11 +31,23 @@ defmodule FfcEx.GameRegistry do
   end
 
   @impl true
-  @spec handle_info({:DOWN, reference(), :process, pid(), term()}, state()) :: {:noreply, state()}
+  def handle_call({:create_game, lobby}, _from, {games, references}) do
+    if Map.has_key?(games, lobby.id) do
+      raise "This game ID already exists in the registry. Game IDs must be unique."
+    else
+      {:ok, game} = GameSupervisor.start_child(lobby)
+      games = Map.put(games, lobby.id, game)
+      ref = Process.monitor(game)
+      references = Map.put(references, ref, lobby.id)
+      {:reply, game, {games, references}}
+    end
+  end
+
+  @impl true
   def handle_info({:DOWN, ref, :process, pid, reason}, {games, references}) do
     {id, references} = Map.pop(references, ref)
     games = Map.delete(games, id)
-    Logger.info("Game #{id}, PID: #{pid} closed (reason: #{reason})")
+    Logger.info("Game #{id}, PID: #{inspect(pid)} closed (reason: #{reason})")
     {:noreply, {games, references}}
   end
 

@@ -2,7 +2,7 @@ defmodule FfcEx.Game do
   alias FfcEx.Lobby
   alias FfcEx.Game
   alias Nostrum.Struct.User
-  use GenServer
+  use GenServer, restart: :temporary
 
   @enforce_keys [:id, :players, :spectators]
   defstruct @enforce_keys

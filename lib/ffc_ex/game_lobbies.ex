@@ -1,7 +1,7 @@
 defmodule FfcEx.GameLobbies do
   use GenServer
 
-  alias FfcEx.GameSupervisor
+  alias FfcEx.GameRegistry
   alias Nostrum.Struct.Channel
   alias Nostrum.Struct.User
   alias FfcEx.Lobby
@@ -98,7 +98,7 @@ defmodule FfcEx.GameLobbies do
 
       true ->
         new_lobbies = Map.delete(lobbies, channel)
-        GameSupervisor.start_child(lobby)
+        GameRegistry.create_game(lobby)
         {:reply, {:closed, lobby}, {new_lobbies, current_id}}
     end
   end

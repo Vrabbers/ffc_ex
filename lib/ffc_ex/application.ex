@@ -4,9 +4,8 @@ defmodule FfcEx.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      FfcEx.GameRegistrySupervisor,
       FfcEx.GameLobbies,
-      FfcEx.GameSupervisor,
-      FfcEx.GameRegistry,
       FfcEx.BaseConsumer
     ]
 
