@@ -1,6 +1,7 @@
 defmodule FfcEx.GameLobbies do
   use GenServer
 
+  alias FfcEx.GameSupervisor
   alias Nostrum.Struct.Channel
   alias Nostrum.Struct.User
   alias FfcEx.Lobby
@@ -97,16 +98,15 @@ defmodule FfcEx.GameLobbies do
 
       true ->
         new_lobbies = Map.delete(lobbies, channel)
+        GameSupervisor.start_child(lobby)
         {:reply, {:closed, lobby}, {new_lobbies, current_id}}
     end
   end
 
   @impl true
   def handle_info({:time_out_lobby, channel}, {lobbies, current_id} = state) do
-    lobby = lobbies[channel]
-
-    if lobby != nil do
-      new_lobbies = Map.delete(lobbies, channel)
+    if Map.has_key?(lobbies, channel) do
+      {lobby, new_lobbies} = Map.pop(lobbies, channel)
 
       Task.start(fn ->
         Api.create_message(channel, "Lobby \##{lobby.id} timed out and has been disbanded.")

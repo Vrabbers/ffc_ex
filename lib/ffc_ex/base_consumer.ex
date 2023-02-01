@@ -84,7 +84,7 @@ defmodule FfcEx.BaseConsumer do
       {:joined, id} ->
         Api.create_message(
           msg.channel_id,
-          "**#{msg.author.username}\#** has joined lobby \##{id}."
+          "**#{msg.author.username}\##{msg.author.discriminator}** has joined lobby \##{id}."
         )
 
       {:already_joined, id} ->
@@ -97,7 +97,7 @@ defmodule FfcEx.BaseConsumer do
       {:spectating, id} ->
         Api.create_message(
           msg.channel_id,
-          "**#{msg.author.username}\#** is spectating lobby \##{id}."
+          "**#{msg.author.username}\##{msg.author.discriminator}** is spectating lobby \##{id}."
         )
 
       :cannot_spectate ->

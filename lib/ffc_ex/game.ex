@@ -1,17 +1,35 @@
 defmodule FfcEx.Game do
+  alias FfcEx.Lobby
+  alias FfcEx.Game
+  alias Nostrum.Struct.User
   use GenServer
+
+  @enforce_keys [:id, :players, :spectators]
+  defstruct @enforce_keys
+
+  @type t() :: %__MODULE__{
+          id: Lobby.id(),
+          players: [User.id()],
+          spectators: [User.id()]
+        }
 
   @spec playercount_valid?(non_neg_integer()) :: boolean()
   def playercount_valid?(count) do
     count >= 2 && count <= 10
   end
 
-  def start_link([]) do
-    GenServer.start_link(__MODULE__, [])
+  def start_link(lobby) do
+    GenServer.start_link(__MODULE__, lobby)
   end
 
   @impl true
-  def init([]) do
-    {:ok, {}}
+  def init(lobby) do
+    game = %Game{
+      id: lobby.id,
+      players: lobby.players,
+      spectators: lobby.spectators
+    }
+
+    {:ok, game}
   end
 end
