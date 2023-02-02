@@ -2,10 +2,10 @@ defmodule FfcEx.GameLobbies do
   use GenServer
 
   alias FfcEx.GameRegistry
-  alias Nostrum.Struct.Channel
-  alias Nostrum.Struct.User
   alias FfcEx.Lobby
   alias Nostrum.Api
+  alias Nostrum.Struct.Channel
+  alias Nostrum.Struct.User
   require Logger
 
   @opaque state() :: {%{required(Channel.id()) => Lobby.t()}, current_id :: Lobby.id()}

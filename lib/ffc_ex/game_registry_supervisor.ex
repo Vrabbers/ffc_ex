@@ -12,7 +12,7 @@ defmodule FfcEx.GameRegistrySupervisor do
       FfcEx.GameRegistry
     ]
 
-    # The registry and the supervisor are largely interdependent
+    # The registry and the supervisor are interdependent
     Supervisor.init(children, strategy: :one_for_all)
   end
 end

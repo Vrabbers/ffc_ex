@@ -6,6 +6,7 @@ defmodule FfcEx.Application do
     children = [
       FfcEx.GameRegistrySupervisor,
       FfcEx.GameLobbies,
+      FfcEx.DmCache,
       FfcEx.BaseConsumer
     ]
 

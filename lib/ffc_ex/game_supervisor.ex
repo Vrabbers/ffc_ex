@@ -1,7 +1,8 @@
 defmodule FfcEx.GameSupervisor do
+  use DynamicSupervisor
+
   alias FfcEx.Lobby
   alias FfcEx.Game
-  use DynamicSupervisor
 
   def start_link([]) do
     DynamicSupervisor.start_link(__MODULE__, [], name: __MODULE__)

@@ -1,12 +1,11 @@
 defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
-  alias Nostrum.Util
+
   alias FfcEx.GameLobbies
-  alias Nostrum.Struct.Embed
-
-  require Logger
-
   alias Nostrum.Api
+  alias Nostrum.Struct.Embed
+  alias Nostrum.Util
+  require Logger
 
   def start_link() do
     Consumer.start_link(__MODULE__, name: __MODULE__)
@@ -16,14 +15,20 @@ defmodule FfcEx.BaseConsumer do
   def handle_event({:MESSAGE_CREATE, msg, _ws_state}) do
     prefix = Application.fetch_env!(:ffc_ex, :prefix)
 
-    if msg.guild_id == nil do
-      # Handle DM message
-    else
-      # Handle guild message
-      if String.starts_with?(msg.content, prefix) do
-        command = String.slice(msg.content, String.length(prefix)..-1//1)
-        handle_guild_commands(command, msg)
-      end
+    case msg.type do
+      0 ->
+        # Handle guild message
+        if String.starts_with?(msg.content, prefix) do
+          command = String.slice(msg.content, String.length(prefix)..-1//1)
+          handle_guild_commands(command, msg)
+        end
+
+      1 ->
+        # Handle DM message
+        :noop
+
+      _ ->
+        :ignore
     end
   end
 
@@ -43,14 +48,18 @@ defmodule FfcEx.BaseConsumer do
   end
 
   defp os_str() do
-    type = case :os.type() do
-      {:win32, _} -> "Windows"
-      {:unix, os_type} -> os_type |> Atom.to_string() |> String.capitalize()
-    end
-    version = case :os.version() do
-      {major, minor, release} -> "#{major}.#{minor}.#{release}"
-      versionString -> versionString
-    end
+    type =
+      case :os.type() do
+        {:win32, _} -> "Windows"
+        {:unix, os_type} -> os_type |> Atom.to_string() |> String.capitalize()
+      end
+
+    version =
+      case :os.version() do
+        {major, minor, release} -> "#{major}.#{minor}.#{release}"
+        versionString -> versionString
+      end
+
     "#{type} v#{version}"
   end
 

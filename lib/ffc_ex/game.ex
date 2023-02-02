@@ -1,8 +1,9 @@
 defmodule FfcEx.Game do
+  # Doesn't make much sense to try restarting a crashed game
+  use GenServer, restart: :temporary
   alias FfcEx.Lobby
   alias FfcEx.Game
   alias Nostrum.Struct.User
-  use GenServer, restart: :temporary
 
   @enforce_keys [:id, :players, :spectators]
   defstruct @enforce_keys
