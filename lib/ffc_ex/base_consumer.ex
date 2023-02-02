@@ -1,5 +1,6 @@
 defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
+  alias Nostrum.Util
   alias FfcEx.GameLobbies
   alias Nostrum.Struct.Embed
 
@@ -41,18 +42,35 @@ defmodule FfcEx.BaseConsumer do
     end
   end
 
+  defp os_str() do
+    type = case :os.type() do
+      {:win32, _} -> "Windows"
+      {:unix, os_type} -> os_type |> Atom.to_string() |> String.capitalize()
+    end
+    version = case :os.version() do
+      {major, minor, release} -> "#{major}.#{minor}.#{release}"
+      versionString -> versionString
+    end
+    "#{type} v#{version}"
+  end
+
   defp ping(msg) do
     prev = System.monotonic_time(:millisecond)
-    {:ok, message} = Api.create_message(msg.channel_id, "Pinging...")
-    ms = System.monotonic_time(:millisecond) - prev
+    {:ok, message} = Api.create_message(msg.channel_id, "Pinging 📶...")
+    api_latency = System.monotonic_time(:millisecond) - prev
+
+    latencies = Util.get_all_shard_latencies() |> Map.values()
+    heartbeat = Enum.sum(latencies) / length(latencies)
 
     embed = %Embed{
       title: "FFCex v#{Keyword.fetch!(Application.spec(:ffc_ex), :vsn)}",
       description: """
-      **API latency:** #{ms}ms
+      **Heartbeat:** #{heartbeat}ms
+      **API latency:** #{api_latency}ms
       **Erlang/OTP release:** #{System.otp_release()}
       **Elixir version:** #{System.version()}
       **Memory usage:** #{(:erlang.memory(:total) / 1_000_000) |> :erlang.float_to_binary(decimals: 2)}MB
+      **Operating system:** #{os_str()}
       """,
       timestamp: DateTime.to_iso8601(DateTime.utc_now()),
       color: Application.fetch_env!(:ffc_ex, :color)
