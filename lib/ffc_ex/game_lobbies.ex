@@ -28,7 +28,7 @@ defmodule FfcEx.GameLobbies do
   end
 
   @spec close(Channel.id(), User.id()) ::
-          {:closed, Lobby.t()} | :cannot_close | :player_count_invalid
+          {:closed, Lobby.t(), pid()} | :cannot_close | :player_count_invalid
   def close(channel, user) do
     GenServer.call(__MODULE__, {:close, channel, user})
   end
@@ -98,8 +98,8 @@ defmodule FfcEx.GameLobbies do
 
       true ->
         new_lobbies = Map.delete(lobbies, channel)
-        GameRegistry.create_game(lobby)
-        {:reply, {:closed, lobby}, {new_lobbies, current_id}}
+        game = GameRegistry.create_game(lobby)
+        {:reply, {:closed, lobby, game}, {new_lobbies, current_id}}
     end
   end
 

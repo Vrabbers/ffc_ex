@@ -1,6 +1,7 @@
 defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
+  alias FfcEx.Game
   alias FfcEx.GameLobbies
   alias Nostrum.Api
   alias Nostrum.Struct.Embed
@@ -137,11 +138,24 @@ defmodule FfcEx.BaseConsumer do
 
   defp close(msg) do
     case GameLobbies.close(msg.channel_id, msg.author.id) do
-      {:closed, lobby} ->
-        Api.create_message(
-          msg.channel_id,
-          "**Lobby \##{lobby.id}** was closed and the game is starting."
-        )
+      {:closed, lobby, game} ->
+        case Game.start_game(game) do
+          :ok ->
+            Api.create_message(
+              msg.channel_id,
+              "**Lobby \##{lobby.id}** was closed and the game is starting."
+            )
+
+          {:cannot_dm, users} ->
+            Api.create_message(
+              msg.channel_id,
+              """
+              Game \##{lobby.id} could not start as I have not been able to DM these players:
+              #{users |> Enum.map(&"<@#{&1}>") |> Enum.join(" ")}
+              Please change settings so I can send these people direct messages.
+              """
+            )
+        end
 
       :cannot_close ->
         Api.create_message(

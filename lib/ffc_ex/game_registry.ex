@@ -6,9 +6,7 @@ defmodule FfcEx.GameRegistry do
   alias FfcEx.GameLobbies.Lobby
 
   # Types registration
-  @type game() :: pid()
-
-  @opaque games_map() :: %{required(Lobby.id()) => game()}
+  @opaque games_map() :: %{required(Lobby.id()) => pid()}
   @opaque references_map() :: %{required(reference()) => Lobby.id()}
   @opaque state() :: {games :: games_map(), references :: references_map()}
 
@@ -18,7 +16,7 @@ defmodule FfcEx.GameRegistry do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  @spec create_game(Lobby.t()) :: game()
+  @spec create_game(Lobby.t()) :: pid()
   def create_game(lobby) do
     GenServer.call(__MODULE__, {:create_game, lobby})
   end
@@ -47,7 +45,7 @@ defmodule FfcEx.GameRegistry do
   def handle_info({:DOWN, ref, :process, pid, reason}, {games, references}) do
     {id, references} = Map.pop(references, ref)
     games = Map.delete(games, id)
-    Logger.info("Game #{id}, PID: #{inspect(pid)} closed (reason: #{reason})")
+    Logger.info("Game #{id}, PID: #{inspect(pid)} closed (reason: #{inspect(reason)})")
     {:noreply, {games, references}}
   end
 
