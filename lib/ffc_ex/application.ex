@@ -4,6 +4,7 @@ defmodule FfcEx.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      FfcEx.PlayerRouter,
       FfcEx.GameRegistrySupervisor,
       FfcEx.GameLobbies,
       FfcEx.DmCache,

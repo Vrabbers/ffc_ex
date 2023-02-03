@@ -1,6 +1,9 @@
 defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
+  alias FfcEx.GameRegistry
+  alias FfcEx.PlayerRouter
+  alias FfcEx.GameCmdParser
   alias FfcEx.Game
   alias FfcEx.GameLobbies
   alias Nostrum.Api
@@ -16,20 +19,34 @@ defmodule FfcEx.BaseConsumer do
   def handle_event({:MESSAGE_CREATE, msg, _ws_state}) do
     prefix = Application.fetch_env!(:ffc_ex, :prefix)
 
-    case msg.type do
-      0 ->
+    case msg.guild_id do
+      nil ->
+        # Handle DM message
+        {int, cmd} = GameCmdParser.parse(msg.content)
+
+        game =
+          case int do
+            nil ->
+              id = PlayerRouter.lookup(msg.author.id)
+              GameRegistry.get_game(id)
+
+            x ->
+              PlayerRouter.set_for(msg.author.id, x)
+              GameRegistry.get_game(x)
+          end
+        if game != nil do
+          res = Game.do_cmd(game, msg.author.id, cmd)
+          if res && match?({:chat, _}, cmd) do
+            Api.create_reaction!(msg.channel_id, msg.id, "✅")
+          end
+        end
+
+      _ ->
         # Handle guild message
         if String.starts_with?(msg.content, prefix) do
           command = String.slice(msg.content, String.length(prefix)..-1//1)
           handle_guild_commands(command, msg)
         end
-
-      1 ->
-        # Handle DM message
-        :noop
-
-      _ ->
-        :ignore
     end
   end
 

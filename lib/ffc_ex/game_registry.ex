@@ -21,6 +21,10 @@ defmodule FfcEx.GameRegistry do
     GenServer.call(__MODULE__, {:create_game, lobby})
   end
 
+  def get_game(id) do
+    GenServer.call(__MODULE__, {:get_game, id})
+  end
+
   # Server-side
   @impl true
   @spec init([]) :: {:ok, state()}
@@ -39,6 +43,11 @@ defmodule FfcEx.GameRegistry do
       references = Map.put(references, ref, lobby.id)
       {:reply, game, {games, references}}
     end
+  end
+
+  @impl true
+  def handle_call({:get_game, id}, _from, {games, _} = state) do
+    {:reply, games[id], state}
   end
 
   @impl true
