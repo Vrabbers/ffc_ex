@@ -1,23 +1,21 @@
 defmodule FfcEx.Game do
   # Doesn't make much sense to try restarting a crashed game
   use GenServer, restart: :temporary
-  alias FfcEx.PlayerRouter
-  alias Nostrum.Struct.Embed
-  alias Nostrum.Struct.Embed.Thumbnail
-  alias FfcEx.DmCache
+  alias FfcEx.{DmCache, Game, Game.Card, Game.Deck, Lobby, PlayerRouter}
+  alias Nostrum.Struct.{Embed, Embed.Thumbnail, User}
   alias Nostrum.Api
-  alias FfcEx.Lobby
-  alias FfcEx.Game
-  alias Nostrum.Struct.User
   require Logger
 
-  @enforce_keys [:id, :players, :spectators]
+  @enforce_keys [:id, :players, :spectators, :deck, :last, :turn_of]
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
           id: Lobby.id(),
-          players: [User.id()],
-          spectators: [User.id()]
+          players: %{required(User.id()) => {Deck.t()}},
+          spectators: [User.id()],
+          deck: Deck.t(),
+          last: Card.t() | nil,
+          turn_of: User.id()
         }
 
   @spec playercount_valid?(non_neg_integer()) :: boolean()
@@ -41,7 +39,6 @@ defmodule FfcEx.Game do
     else
       false
     end
-
   end
 
   def start_link(lobby) do
@@ -50,10 +47,18 @@ defmodule FfcEx.Game do
 
   @impl true
   def init(lobby) do
+    deck = Deck.new()
+    {groups, deck} = Deck.get_many_groups(deck, 7, length(lobby.players))
+    players = Enum.zip(lobby.players, groups) |> Map.new()
+    {last, deck} = Deck.get_matching(deck, &Card.is_valid_first_card/1)
+
     game = %Game{
       id: lobby.id,
-      players: lobby.players,
-      spectators: lobby.spectators
+      players: players,
+      spectators: lobby.spectators,
+      deck: deck,
+      last: last,
+      turn_of: List.first(lobby.players)
     }
 
     {:ok, game}
@@ -107,7 +112,7 @@ defmodule FfcEx.Game do
 
   @spec participants(Game.t()) :: [User.id()]
   defp participants(game) do
-    game.players ++ game.spectators
+    Map.keys(game.players) ++ game.spectators
   end
 
   defp broadcast(game, message) do
