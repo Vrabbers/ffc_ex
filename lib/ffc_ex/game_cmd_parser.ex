@@ -10,7 +10,7 @@ defmodule FfcEx.GameCmdParser do
     split = String.split(rest, ~r{\s}, parts: 2) |> List.to_tuple()
 
     result = case split do
-      {"test"} -> {:test}
+      {"state"} -> {:state}
       {"chat", arg} -> {:chat, arg}
       {_, _} -> {:chat, rest}
       {_} -> {:chat, rest}

@@ -8,6 +8,7 @@ defmodule FfcEx.Game.Card do
   defguardp is_wchar(char) when char in [?w, ?4]
   defguardp is_cardno(no) when no in 0..9
 
+  @spec is_valid_first_card(t()) :: boolean()
   def is_valid_first_card(card) do
     case card do
       {_first, second} when is_cardno(second) -> true

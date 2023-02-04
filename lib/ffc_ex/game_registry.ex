@@ -1,9 +1,9 @@
 defmodule FfcEx.GameRegistry do
   use GenServer
-  require Logger
 
   alias FfcEx.GameSupervisor
   alias FfcEx.GameLobbies.Lobby
+  require Logger
 
   # Types registration
   @opaque games_map() :: %{required(Lobby.id()) => pid()}
@@ -60,7 +60,6 @@ defmodule FfcEx.GameRegistry do
 
   @impl true
   def handle_info(msg, state) do
-    require Logger
     Logger.debug("Unknown message received by GameRegistry: #{inspect(msg)}")
     {:noreply, state}
   end

@@ -6,12 +6,13 @@ defmodule FfcEx.Game do
   alias Nostrum.Api
   require Logger
 
-  @enforce_keys [:id, :players, :spectators, :deck, :last, :turn_of]
+  @enforce_keys [:id, :players, :hands, :spectators, :deck, :last, :turn_of]
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
           id: Lobby.id(),
-          players: %{required(User.id()) => {Deck.t()}},
+          players: [User.id()],
+          hands: %{required(User.id()) => {Deck.t()}},
           spectators: [User.id()],
           deck: Deck.t(),
           last: Card.t() | nil,
@@ -49,12 +50,13 @@ defmodule FfcEx.Game do
   def init(lobby) do
     deck = Deck.new()
     {groups, deck} = Deck.get_many_groups(deck, 7, length(lobby.players))
-    players = Enum.zip(lobby.players, groups) |> Map.new()
+    hands = Enum.zip(lobby.players, groups) |> Map.new()
     {last, deck} = Deck.get_matching(deck, &Card.is_valid_first_card/1)
 
     game = %Game{
       id: lobby.id,
-      players: players,
+      players: lobby.players,
+      hands: hands,
       spectators: lobby.spectators,
       deck: deck,
       last: last,
@@ -65,8 +67,8 @@ defmodule FfcEx.Game do
   end
 
   @impl true
-  def handle_cast({_user_id, {:test}}, game) do
-    broadcast(game, "hi")
+  def handle_cast({user_id, {:state}}, game) do
+    tell(user_id, "```elixir\n#{inspect(game, pretty: true, limit: 10, width: 120)}```")
     {:noreply, game}
   end
 
@@ -112,7 +114,7 @@ defmodule FfcEx.Game do
 
   @spec participants(Game.t()) :: [User.id()]
   defp participants(game) do
-    Map.keys(game.players) ++ game.spectators
+    game.players ++ game.spectators
   end
 
   defp broadcast(game, message) do
