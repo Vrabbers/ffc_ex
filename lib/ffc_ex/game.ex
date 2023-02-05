@@ -6,7 +6,7 @@ defmodule FfcEx.Game do
   alias Nostrum.Api
   require Logger
 
-  @enforce_keys [:id, :players, :hands, :spectators, :deck, :last]
+  @enforce_keys [:id, :players, :hands, :spectators, :deck, :current_card]
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
@@ -15,7 +15,7 @@ defmodule FfcEx.Game do
           hands: %{required(User.id()) => {Deck.t()}},
           spectators: [User.id()],
           deck: Deck.t(),
-          last: Card.t() | nil
+          current_card: Card.t() | nil
         }
 
   @spec playercount_valid?(non_neg_integer()) :: boolean()
@@ -59,34 +59,58 @@ defmodule FfcEx.Game do
       hands: hands,
       spectators: lobby.spectators,
       deck: deck,
-      last: last
+      current_card: last
     }
 
     {:ok, game}
   end
 
   @impl true
-  def handle_cast({user_id, {:state}}, game) do
+  def handle_cast({user_id, :state}, game) do
+    # TODO: Debug command!
     tell(user_id, "```elixir\n#{inspect(game, pretty: true, limit: 10, width: 120)}```")
     {:noreply, game}
   end
 
   @impl true
-  def handle_cast({user_id, {:status}}, game) do
+  def handle_cast({user_id, :status}, game) do
     field_text =
       game.players
       |> Enum.map(fn user_id -> {username(user_id), length(game.hands[user_id])} end)
-      |> Enum.map(fn {uname, cards} -> "#{uname} - `#{cards}` cards" end)
+      |> Enum.map(fn {uname, cards} -> "#{uname} - #{cards} cards" end)
       |> Enum.join("\n")
 
-    embed = %Embed{
-      title: "Game \##{game.id}",
-      description: "Game status:",
-      fields: [%Field{name: "Players", value: field_text <> "\n**Play continues downwards**"}],
-      color: Application.fetch_env!(:ffc_ex, :color)
-    }
+    embed =
+      %Embed{
+        title: "Game \##{game.id}",
+        description: "Game status:",
+        fields: [
+          %Field{name: "Current card", value: Card.to_string(game.current_card)},
+          %Field{name: "Players", value: field_text <> "\n**Play continues downwards**"}
+        ],
+        color: Application.fetch_env!(:ffc_ex, :color)
+      }
+      |> put_id_footer(game)
 
     tell(user_id, embeds: [embed])
+
+    {:noreply, game}
+  end
+
+  @impl true
+  def handle_cast({user_id, :hand}, game) do
+    if user_id in game.players do
+      embed =
+        %Embed{
+          title: "Your hand",
+          description: formatted_hand(game.hands[user_id], game.current_card)
+        }
+        |> put_id_footer(game)
+
+      tell(user_id, embeds: [embed])
+    else
+      tell(user_id, "You do not have a hand!")
+    end
 
     {:noreply, game}
   end
@@ -117,13 +141,15 @@ defmodule FfcEx.Game do
           description: """
           Welcome to Final Fanstastic Card!
           """,
-          color: Application.fetch_env!(:ffc_ex, :color),
           thumbnail: %Thumbnail{url: "attachment://draw.png"}
         }
         |> put_id_footer(game)
 
       broadcast(game, embeds: [embed], files: ["./img/draw.png"])
       PlayerRouter.add_all_to(participants(game), game.id)
+
+      do_turn(game)
+
       {:reply, :ok, game}
     else
       {:stop, :error, {:cannot_dm, for({{:error, _}, user} <- responses, do: user)}, game}
@@ -168,7 +194,42 @@ defmodule FfcEx.Game do
   end
 
   defp put_id_footer(embed, game) do
-    Embed.put_footer(embed, "Game \##{game.id}")
+    embed = Embed.put_footer(embed, "Game \##{game.id}")
+
+    unless embed.color do
+      Embed.put_color(embed, Application.fetch_env!(:ffc_ex, :color))
+    else
+      embed
+    end
+  end
+
+  defp do_turn(game) do
+    current_player = current_player(game)
+
+    embed =
+      %Embed{
+        title: "Your turn!",
+        fields: [
+          %Field{name: "Current card", value: Card.to_string(game.current_card)},
+          %Field{
+            name: "Your hand",
+            value: formatted_hand(game.hands[current_player], game.current_card)
+          }
+        ]
+      }
+      |> put_id_footer(game)
+
+    tell(current_player, embeds: [embed])
+  end
+
+  defp formatted_hand(hand, current_card \\ nil) do
+    if current_card == nil do
+      hand |> Enum.map(&Card.to_string/1) |> Enum.join(" ")
+    else
+      can_play = hand |> Enum.filter(&Card.can_play_on?(current_card, &1))
+      cannot_play = hand -- can_play
+      "**#{formatted_hand(can_play)}** #{formatted_hand(cannot_play)}"
+    end
   end
 
   defp current_player(game) do
