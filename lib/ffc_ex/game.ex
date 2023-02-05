@@ -2,11 +2,11 @@ defmodule FfcEx.Game do
   # Doesn't make much sense to try restarting a crashed game
   use GenServer, restart: :temporary
   alias FfcEx.{DmCache, Game, Game.Card, Game.Deck, Lobby, PlayerRouter}
-  alias Nostrum.Struct.{Embed, Embed.Thumbnail, User}
+  alias Nostrum.Struct.{Embed, Embed.Field, Embed.Thumbnail, User}
   alias Nostrum.Api
   require Logger
 
-  @enforce_keys [:id, :players, :hands, :spectators, :deck, :last, :turn_of]
+  @enforce_keys [:id, :players, :hands, :spectators, :deck, :last]
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
@@ -15,13 +15,12 @@ defmodule FfcEx.Game do
           hands: %{required(User.id()) => {Deck.t()}},
           spectators: [User.id()],
           deck: Deck.t(),
-          last: Card.t() | nil,
-          turn_of: User.id()
+          last: Card.t() | nil
         }
 
   @spec playercount_valid?(non_neg_integer()) :: boolean()
   def playercount_valid?(count) do
-    count >= 2 && count <= 10
+    count in 2..10
   end
 
   @spec start_game(pid()) :: :ok | {:cannot_dm, [User.id()]}
@@ -29,12 +28,13 @@ defmodule FfcEx.Game do
     GenServer.call(game, :start_game, :infinity)
   end
 
-  def is_part_of(game, user) do
+  @spec is_part_of?(pid(), User.id()) :: boolean()
+  def is_part_of?(game, user) do
     GenServer.call(game, {:is_part_of, user})
   end
 
   def do_cmd(game, user, cmd) do
-    if is_part_of(game, user) do
+    if is_part_of?(game, user) do
       GenServer.cast(game, {user, cmd})
       true
     else
@@ -49,9 +49,9 @@ defmodule FfcEx.Game do
   @impl true
   def init(lobby) do
     deck = Deck.new()
+    {last, deck} = Deck.get_matching(deck, &Card.is_valid_first_card?/1)
     {groups, deck} = Deck.get_many_groups(deck, 7, length(lobby.players))
     hands = Enum.zip(lobby.players, groups) |> Map.new()
-    {last, deck} = Deck.get_matching(deck, &Card.is_valid_first_card/1)
 
     game = %Game{
       id: lobby.id,
@@ -59,8 +59,7 @@ defmodule FfcEx.Game do
       hands: hands,
       spectators: lobby.spectators,
       deck: deck,
-      last: last,
-      turn_of: List.first(lobby.players)
+      last: last
     }
 
     {:ok, game}
@@ -73,9 +72,28 @@ defmodule FfcEx.Game do
   end
 
   @impl true
+  def handle_cast({user_id, {:status}}, game) do
+    field_text =
+      game.players
+      |> Enum.map(fn user_id -> {username(user_id), length(game.hands[user_id])} end)
+      |> Enum.map(fn {uname, cards} -> "#{uname} - `#{cards}` cards" end)
+      |> Enum.join("\n")
+
+    embed = %Embed{
+      title: "Game \##{game.id}",
+      description: "Game status:",
+      fields: [%Field{name: "Players", value: field_text <> "\n**Play continues downwards**"}],
+      color: Application.fetch_env!(:ffc_ex, :color)
+    }
+
+    tell(user_id, embeds: [embed])
+
+    {:noreply, game}
+  end
+
+  @impl true
   def handle_cast({user_id, {:chat, chat_msg}}, game) do
-    {:ok, user} = Api.get_user(user_id)
-    broadcast_except(game, [user_id], "**#{user.username}\##{user.discriminator}:** #{chat_msg}")
+    broadcast_except(game, [user_id], "**#{username(user_id)}:** #{chat_msg}")
     {:noreply, game}
   end
 
@@ -151,5 +169,24 @@ defmodule FfcEx.Game do
 
   defp put_id_footer(embed, game) do
     Embed.put_footer(embed, "Game \##{game.id}")
+  end
+
+  defp current_player(game) do
+    List.first(game.players)
+  end
+
+  defp go_next_player(game) do
+    [first | others] = game.players
+    players = others ++ [first]
+    %Game{game | players: players}
+  end
+
+  defp reverse_playing_order(game) do
+    %Game{game | players: Enum.reverse(game.players)}
+  end
+
+  defp username(user_id) do
+    {:ok, user} = Api.get_user(user_id)
+    "#{user.username}\##{user.discriminator}"
   end
 end

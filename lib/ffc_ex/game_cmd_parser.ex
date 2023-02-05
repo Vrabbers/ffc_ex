@@ -11,6 +11,7 @@ defmodule FfcEx.GameCmdParser do
 
     result = case split do
       {"state"} -> {:state}
+      {"status"} -> {:status}
       {"chat", arg} -> {:chat, arg}
       {_, _} -> {:chat, rest}
       {_} -> {:chat, rest}
