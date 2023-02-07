@@ -82,8 +82,7 @@ defmodule FfcEx.Game do
 
     embed =
       %Embed{
-        title: "Game \##{game.id}",
-        description: "Game status:",
+        title: "Game status",
         fields: [
           %Field{name: "Current card", value: Card.to_string(game.current_card)},
           %Field{name: "Players", value: field_text <> "\n**Play continues downwards**"}
@@ -117,7 +116,7 @@ defmodule FfcEx.Game do
 
   @impl true
   def handle_cast({user_id, {:chat, chat_msg}}, game) do
-    broadcast_except(game, [user_id], "**#{username(user_id)}:** #{chat_msg}")
+    broadcast_except(game, [user_id], "*\##{game.id}* **#{uname_discrim(user_id)}:** #{chat_msg}")
     {:noreply, game}
   end
 
@@ -222,14 +221,14 @@ defmodule FfcEx.Game do
     tell(current_player, embeds: [embed])
   end
 
-  defp formatted_hand(hand, current_card \\ nil) do
-    if current_card == nil do
-      hand |> Enum.map(&Card.to_string/1) |> Enum.join(" ")
-    else
-      can_play = hand |> Enum.filter(&Card.can_play_on?(current_card, &1))
-      cannot_play = hand -- can_play
-      "**#{formatted_hand(can_play)}** #{formatted_hand(cannot_play)}"
-    end
+  defp formatted_hand(hand) do
+    hand |> Enum.map(&Card.to_string/1) |> Enum.sort() |> Enum.join(" ")
+  end
+
+  defp formatted_hand(hand, current_card) do
+    can_play = hand |> Enum.filter(&Card.can_play_on?(current_card, &1))
+    cannot_play = hand -- can_play
+    "**#{formatted_hand(can_play)}** #{formatted_hand(cannot_play)}"
   end
 
   defp current_player(game) do
@@ -246,8 +245,13 @@ defmodule FfcEx.Game do
     %Game{game | players: Enum.reverse(game.players)}
   end
 
-  defp username(user_id) do
+  defp uname_discrim(user_id) do
     {:ok, user} = Api.get_user(user_id)
     "#{user.username}\##{user.discriminator}"
+  end
+
+  defp username(user_id) do
+    {:ok, user} = Api.get_user(user_id)
+    user.username
   end
 end

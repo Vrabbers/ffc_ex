@@ -18,6 +18,7 @@ defmodule FfcEx.Game.Card do
 
   def can_play_on?(card_down, card_to_play) do
     case {card_down, card_to_play} do
+      {nil, _} -> false
       {_, {x, _}} when x in [:wildcard, :wildcard_draw4] -> true
       {{a1, a2}, {b1, b2}} when a1 == b1 or a2 == b2 -> true
       _ -> false
