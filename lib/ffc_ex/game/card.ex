@@ -6,7 +6,9 @@ defmodule FfcEx.Game.Card do
 
   defguardp is_colchar(char) when char in [?r, ?g, ?b, ?y]
   defguardp is_wchar(char) when char in [?w, ?4]
-  defguardp is_cardno(no) when no in 0..9
+  defguard is_cardno(no) when no in 0..9
+  defguard is_color(col) when col in [:red, :green, :yellow, :blue]
+  defguard is_wildcard(wild) when wild in [:wildcard, :wildcard_draw4]
 
   @spec is_valid_first_card?(t()) :: boolean()
   def is_valid_first_card?(card) do
@@ -16,10 +18,12 @@ defmodule FfcEx.Game.Card do
     end
   end
 
+  @spec can_play_on?(t(), t()) :: boolean
   def can_play_on?(card_down, card_to_play) do
     case {card_down, card_to_play} do
       {nil, _} -> false
-      {_, {x, _}} when x in [:wildcard, :wildcard_draw4] -> true
+      {_, {w, _}} when w in [:wildcard, :wildcard_draw4] -> true
+      {{w, c}, {c, _}} when w in [:wildcard, :wildcard_draw4] -> true
       {{a1, a2}, {b1, b2}} when a1 == b1 or a2 == b2 -> true
       _ -> false
     end
@@ -68,10 +72,10 @@ defmodule FfcEx.Game.Card do
   defp parse_wildcard(rest) do
     case rest do
       <<first::utf8, second::utf8>> when is_wchar(first) and is_colchar(second) ->
-        {parse_wildcard_modif(first), parse_color(second)}
+        {:ok, {parse_wildcard_modif(first), parse_color(second)}}
 
       <<first::utf8>> when is_wchar(first) ->
-        {parse_wildcard_modif(first), nil}
+        {:ok, {parse_wildcard_modif(first), nil}}
 
       _ ->
         :error
@@ -118,7 +122,7 @@ defmodule FfcEx.Game.Card do
     if complement == :error do
       :error
     else
-      {color, complement}
+      {:ok, {color, complement}}
     end
   end
 end

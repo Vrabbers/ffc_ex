@@ -1,5 +1,6 @@
 defmodule FfcEx.Game.Deck do
   alias FfcEx.Game.Card
+  require Card
 
   @type t() :: [Card.t()]
 
@@ -11,7 +12,13 @@ defmodule FfcEx.Game.Deck do
 
   @spec get_matching(t(), (Card.t() -> as_boolean(any))) :: {Card.t(), t()}
   def get_matching(deck, fun) do
-    deck |> Enum.filter(fun) |> get_random()
+    {card, deck} = get_random(deck)
+
+    if fun.(card) do
+      {card, deck}
+    else
+      get_matching(deck, fun)
+    end
   end
 
   @spec get_many(t(), pos_integer()) :: {[Card.t()], t()}
@@ -30,7 +37,20 @@ defmodule FfcEx.Game.Deck do
 
   @spec put_back(t(), Card.t()) :: t()
   def put_back(deck, card) do
-    [card | deck]
+    case card do
+      {x, _} when x in [:wildcard, :wildcard_draw4] -> [{x, nil} | deck]
+      _ -> [card | deck]
+    end
+  end
+
+  @spec has_card?(t(), Card.t()) :: boolean()
+  def has_card?(deck, card) do
+    Enum.any?(deck, fn card_from_deck ->
+      case card_from_deck do
+        {wild, _} when wild in [:wildcard, :wildcard_draw4] -> {wild, nil} == card
+        _ -> card == card_from_deck
+      end
+    end)
   end
 
   @spec remove(t(), Card.t()) :: {Card.t(), t()} | :error

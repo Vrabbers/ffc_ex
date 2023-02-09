@@ -5,6 +5,7 @@ defmodule FfcEx.Game do
   alias Nostrum.Struct.{Embed, Embed.Field, Embed.Thumbnail, User}
   alias Nostrum.Api
   require Logger
+  require Card
 
   @enforce_keys [:id, :players, :hands, :spectators, :deck, :current_card]
   defstruct @enforce_keys
@@ -70,6 +71,28 @@ defmodule FfcEx.Game do
     # TODO: Debug command!
     tell(user_id, "```elixir\n#{inspect(game, pretty: true, limit: 10, width: 120)}```")
     {:noreply, game}
+  end
+
+  @impl true
+  def handle_cast({user_id, {:play, card_str}}, game) do
+    if current_player(game) != user_id do
+      tell(user_id, "You can't use this when you're not playing!")
+      {:noreply, game}
+    else
+      case Card.parse(card_str) do
+        {:ok, {_, nil}} ->
+          tell(user_id, "Please specify wildcard color!")
+          {:noreply, game}
+
+        {:ok, card} ->
+          game = do_play_card(game, user_id, card)
+          {:noreply, game}
+
+        :error ->
+          tell(user_id, "Invalid card!")
+          {:noreply, game}
+      end
+    end
   end
 
   @impl true
@@ -139,6 +162,8 @@ defmodule FfcEx.Game do
           title: "Final Fantastic Card",
           description: """
           Welcome to Final Fanstastic Card!
+
+          [Click here to view game & bot instructions!](https://vrabbers.github.io/ffc_ex/game_instructions.html)
           """,
           thumbnail: %Thumbnail{url: "attachment://draw.png"}
         }
@@ -179,17 +204,15 @@ defmodule FfcEx.Game do
   defp tell(user, message) do
     {:ok, dm_channel} = DmCache.create(user)
 
-    Task.start(fn ->
-      case Api.create_message(dm_channel, message) do
-        {:error, error} ->
-          Logger.error(
-            "Error telling #{inspect(user)} message: #{inspect(message)}: #{inspect(error)}"
-          )
+    case Api.create_message(dm_channel, message) do
+      {:error, error} ->
+        Logger.error(
+          "Error telling #{inspect(user)} message: #{inspect(message)}: #{inspect(error)}"
+        )
 
-        {:ok, _} ->
-          :noop
-      end
-    end)
+      {:ok, _} ->
+        :noop
+    end
   end
 
   defp put_id_footer(embed, game) do
@@ -221,6 +244,107 @@ defmodule FfcEx.Game do
     tell(current_player, embeds: [embed])
   end
 
+  defp do_play_card(game, player_id, card) do
+    player_hand = game.hands[player_id]
+
+    cond do
+      !(Deck.has_card?(player_hand, card)) ->
+        tell(player_id, "You don't have this card!")
+        game
+
+      !Card.can_play_on?(game.current_card, card) ->
+        tell(player_id, "This card can't be played! Cards that can be played are in **bold**.")
+        game
+
+      true ->
+        case card do
+          {x, _} when Card.is_color(x) ->
+            broadcast(game,
+              embeds: [
+                %Embed{
+                  title: "Card played!",
+                  description:
+                    "#{uname_discrim(player_id)} has played a **#{Card.to_string(card)}**"
+                }
+                |> put_id_footer(game)
+              ]
+            )
+
+          {x, col} when Card.is_wildcard(x) and Card.is_color(col) ->
+            broadcast(game,
+              embeds: [
+                %Embed{
+                  title: "Color changed!",
+                  description:
+                    "#{uname_discrim(player_id)} played **#{Card.to_string(card)}** and the color has changed to **#{col}**!",
+                  thumbnail: %Thumbnail{url: "attachment://#{col}.png"}
+                }
+                |> put_id_footer(game)
+              ],
+              files: ["./img/#{col}.png"]
+            )
+        end
+
+        new_deck = Deck.put_back(game.deck, game.current_card)
+        new_hands = Map.put(game.hands, player_id, player_hand -- [card])
+
+        game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
+
+        game =
+          case card do
+            {x, no} when Card.is_cardno(no) or x == :wildcard ->
+              advance_player(game)
+
+            {_, :skip} ->
+              advance_twice(game)
+
+            {_, :reverse} ->
+              reverse_playing_order(game)
+
+            {_, :draw2} ->
+              game |> draw_next(2) |> advance_twice()
+
+            {:wildcard_draw4, _} ->
+              game |> draw_next(4) |> advance_twice()
+          end
+
+        do_turn(game)
+        game
+    end
+  end
+
+  defp draw_next(game, amt) do
+    draw_str =
+      case amt do
+        2 -> "draw2.png"
+        4 -> "draw4.png"
+        6 -> "draw6.png"
+        _ -> "draw.png"
+      end
+
+    next_player = next_player(game)
+
+    broadcast(game,
+      embeds: [
+        %Embed{
+          title: "Drawn cards",
+          description: "#{uname_discrim(next_player)} has been forced to draw #{amt} cards!",
+          thumbnail: %Thumbnail{url: "attachment://#{draw_str}"}
+        }
+        |> put_id_footer(game)
+      ],
+      files: ["./img/#{draw_str}"]
+    )
+
+    {drawn, deck} = Deck.get_many(game.deck, amt)
+    hands = Map.update!(game.hands, next_player, &(drawn ++ &1))
+    %Game{game | deck: deck, hands: hands}
+  end
+
+  defp next_player(game) do
+    Enum.at(game.players, 1)
+  end
+
   defp formatted_hand(hand) do
     hand |> Enum.map(&Card.to_string/1) |> Enum.sort() |> Enum.join(" ")
   end
@@ -235,10 +359,14 @@ defmodule FfcEx.Game do
     List.first(game.players)
   end
 
-  defp go_next_player(game) do
+  defp advance_player(game) do
     [first | others] = game.players
     players = others ++ [first]
     %Game{game | players: players}
+  end
+
+  defp advance_twice(game) do
+    game |> advance_player() |> advance_player()
   end
 
   defp reverse_playing_order(game) do

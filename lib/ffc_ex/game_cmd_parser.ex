@@ -8,12 +8,13 @@ defmodule FfcEx.GameCmdParser do
 
   defp do_parse(game_id, rest) do
     split = String.split(rest, ~r{\s}, parts: 2) |> List.to_tuple()
-    
+
     result = case split do
       {"hand"} -> :hand
       {"state"} -> :state
       {"status"} -> :status
       {"chat", arg} -> {:chat, arg}
+      {"play", card} -> {:play, card}
       {_, _} -> {:chat, rest}
       {_} -> {:chat, rest}
     end
