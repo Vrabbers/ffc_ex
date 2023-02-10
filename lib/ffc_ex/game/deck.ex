@@ -46,8 +46,8 @@ defmodule FfcEx.Game.Deck do
   @spec has_card?(t(), Card.t()) :: boolean()
   def has_card?(deck, card) do
     Enum.any?(deck, fn card_from_deck ->
-      case card_from_deck do
-        {wild, _} when wild in [:wildcard, :wildcard_draw4] -> {wild, nil} == card
+      case card do
+        {wild, _} when wild in [:wildcard, :wildcard_draw4] -> {wild, nil} == card_from_deck
         _ -> card == card_from_deck
       end
     end)
@@ -55,6 +55,10 @@ defmodule FfcEx.Game.Deck do
 
   @spec remove(t(), Card.t()) :: {Card.t(), t()} | :error
   def remove(deck, card) do
+    card = case card do
+      {wild, _} when Card.is_wildcard(wild) -> {wild, nil}
+      _ -> card
+    end |> IO.inspect()
     if card in deck do
       {card, deck -- [card]}
     else

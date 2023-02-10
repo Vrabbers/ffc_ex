@@ -286,7 +286,8 @@ defmodule FfcEx.Game do
         end
 
         new_deck = Deck.put_back(game.deck, game.current_card)
-        new_hands = Map.put(game.hands, player_id, player_hand -- [card])
+        {_, new_hand} = Deck.remove(player_hand, card)
+        new_hands = Map.put(game.hands, player_id, new_hand)
 
         game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
 
@@ -299,7 +300,7 @@ defmodule FfcEx.Game do
               advance_twice(game)
 
             {_, :reverse} ->
-              reverse_playing_order(game)
+              game |> reverse_playing_order() |> advance_player()
 
             {_, :draw2} ->
               game |> draw_next(2) |> advance_twice()

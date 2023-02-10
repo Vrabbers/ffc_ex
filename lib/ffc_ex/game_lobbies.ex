@@ -50,7 +50,7 @@ defmodule FfcEx.GameLobbies do
         new_lobbies = Map.put(lobbies, channel, new_lobby)
         new_id = current_id + 1
         timeout = DateTime.add(DateTime.utc_now(), 5, :minute)
-        Process.send_after(self(), {:time_out_lobby, channel}, 5 * 60 * 1000)
+        Process.send_after(self(), {:time_out_lobby, current_id}, 5 * 60 * 1000)
         {:reply, {:new, current_id, timeout}, {new_lobbies, new_id}}
 
       lobby.starting_user == user || Enum.any?(lobby.players, &(&1 == user)) ->
@@ -104,17 +104,19 @@ defmodule FfcEx.GameLobbies do
   end
 
   @impl true
-  def handle_info({:time_out_lobby, channel}, {lobbies, current_id} = state) do
-    if Map.has_key?(lobbies, channel) do
-      {lobby, new_lobbies} = Map.pop(lobbies, channel)
+  def handle_info({:time_out_lobby, id}, {lobbies, current_id} = state) do
+    case lobbies |> Enum.find(fn {_, lobby} -> lobby.id == id end) do
+      {channel, lobby} ->
+        {^lobby, new_lobbies} = Map.pop(lobbies, channel)
 
-      Task.start(fn ->
-        Api.create_message(channel, "Lobby \##{lobby.id} timed out and has been disbanded.")
-      end)
+        Task.start(fn ->
+          Api.create_message(channel, "Lobby \##{lobby.id} timed out and has been disbanded.")
+        end)
 
-      {:noreply, {new_lobbies, current_id}}
-    else
-      {:noreply, state}
+        {:noreply, {new_lobbies, current_id}}
+
+      nil ->
+        {:noreply, state}
     end
   end
 
