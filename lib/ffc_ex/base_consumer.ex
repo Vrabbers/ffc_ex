@@ -34,8 +34,10 @@ defmodule FfcEx.BaseConsumer do
               PlayerRouter.set_for(msg.author.id, x)
               GameRegistry.get_game(x)
           end
+
         if game != nil do
           res = Game.do_cmd(game, msg.author.id, cmd)
+
           if res && match?({:chat, _}, cmd) do
             Api.create_reaction!(msg.channel_id, msg.id, "✅")
           end
@@ -61,8 +63,25 @@ defmodule FfcEx.BaseConsumer do
       "join" -> join(msg)
       "spectate" -> spectate(msg)
       "close" -> close(msg)
+      "help" -> help(msg)
       _ -> :ignore
     end
+  end
+
+  defp help(msg) do
+    embed = %Embed{
+      title: "FFCex Help",
+      description: """
+      `ffc:ping` - checks if bot is online and shows general info.
+      `ffc:help` - gets this message.
+      `ffc:join` - starts a new game lobby or joins an existing one.
+      `ffc:close` - closes the game lobby and starts the game.
+      [Click here to view game instructions.](https://vrabbers.github.io/ffc_ex/game_instructions.html)
+      """,
+      color: Application.fetch_env!(:ffc_ex, :color)
+    }
+
+    Api.create_message(msg.channel_id, embeds: [embed])
   end
 
   defp os_str() do
