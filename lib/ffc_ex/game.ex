@@ -162,7 +162,7 @@ defmodule FfcEx.Game do
           title: "Final Fantastic Card",
           description: """
           Welcome to Final Fanstastic Card!
-
+          
           [Click here to view game & bot instructions!](https://vrabbers.github.io/ffc_ex/game_instructions.html)
           """,
           thumbnail: %Thumbnail{url: "attachment://draw.png"}
@@ -242,13 +242,14 @@ defmodule FfcEx.Game do
       |> put_id_footer(game)
 
     tell(current_player, embeds: [embed])
+    game
   end
 
   defp do_play_card(game, player_id, card) do
     player_hand = game.hands[player_id]
 
     cond do
-      !(Deck.has_card?(player_hand, card)) ->
+      !Deck.has_card?(player_hand, card) ->
         tell(player_id, "You don't have this card!")
         game
 
@@ -257,33 +258,17 @@ defmodule FfcEx.Game do
         game
 
       true ->
-        case card do
-          {x, _} when Card.is_color(x) ->
-            broadcast(game,
-              embeds: [
-                %Embed{
-                  title: "Card played!",
-                  description:
-                    "#{uname_discrim(player_id)} has played a **#{Card.to_string(card)}**"
-                }
-                |> put_id_footer(game)
-              ]
-            )
+        broadcast(game,
+          embeds: [
+            %Embed{
+              title: "Card played!",
+              description: "#{username(player_id)} has played a **#{Card.to_string(card)}**"
+            }
+            |> put_id_footer(game)
+          ]
+        )
 
-          {x, col} when Card.is_wildcard(x) and Card.is_color(col) ->
-            broadcast(game,
-              embeds: [
-                %Embed{
-                  title: "Color changed!",
-                  description:
-                    "#{uname_discrim(player_id)} played **#{Card.to_string(card)}** and the color has changed to **#{col}**!",
-                  thumbnail: %Thumbnail{url: "attachment://#{col}.png"}
-                }
-                |> put_id_footer(game)
-              ],
-              files: ["./img/#{col}.png"]
-            )
-        end
+        card_special_message(game, card)
 
         new_deck = Deck.put_back(game.deck, game.current_card)
         {_, new_hand} = Deck.remove(player_hand, card)
@@ -291,26 +276,75 @@ defmodule FfcEx.Game do
 
         game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
 
-        game =
-          case card do
-            {x, no} when Card.is_cardno(no) or x == :wildcard ->
-              advance_player(game)
-
-            {_, :skip} ->
-              advance_twice(game)
-
-            {_, :reverse} ->
-              game |> reverse_playing_order() |> advance_player()
-
-            {_, :draw2} ->
-              game |> draw_next(2) |> advance_twice()
-
-            {:wildcard_draw4, _} ->
-              game |> draw_next(4) |> advance_twice()
-          end
+        game = do_card_effect(game, card)
 
         do_turn(game)
         game
+    end
+  end
+
+  defp card_special_message(game, card) do
+    case card do
+      {x, :skip} when Card.is_color(x) ->
+        broadcast(game,
+          embeds: [
+            %Embed{
+              title: "Turn skipped!",
+              description: "#{game |> next_player() |> username()}'s turn has been skipped!",
+              thumbnail: %Thumbnail{url: "attachment://skip.png"}
+            }
+            |> put_id_footer(game)
+          ],
+          files: ["./img/skip.png"]
+        )
+
+      {x, :reverse} when Card.is_color(x) ->
+        broadcast(game,
+          embeds: [
+            %Embed{
+              title: "Play reversed!",
+              description: "The direction of play has been reversed.",
+              thumbnail: %Thumbnail{url: "attachment://reverse.png"}
+            }
+            |> put_id_footer(game)
+          ],
+          files: ["./img/reverse.png"]
+        )
+
+      {x, col} when Card.is_wildcard(x) and Card.is_color(col) ->
+        broadcast(game,
+          embeds: [
+            %Embed{
+              title: "Color changed!",
+              description: "#The color has changed to **#{col}**.",
+              thumbnail: %Thumbnail{url: "attachment://#{col}.png"}
+            }
+            |> put_id_footer(game)
+          ],
+          files: ["./img/#{col}.png"]
+        )
+
+      _ ->
+        :noop
+    end
+  end
+
+  defp do_card_effect(game, card) do
+    case card do
+      {x, no} when Card.is_cardno(no) or x == :wildcard ->
+        advance_player(game)
+
+      {_, :skip} ->
+        advance_twice(game)
+
+      {_, :reverse} ->
+        game |> reverse_playing_order() |> advance_player()
+
+      {_, :draw2} ->
+        game |> draw_next(2) |> advance_twice()
+
+      {:wildcard_draw4, _} ->
+        game |> draw_next(4) |> advance_twice()
     end
   end
 
@@ -353,7 +387,7 @@ defmodule FfcEx.Game do
   defp formatted_hand(hand, current_card) do
     can_play = hand |> Enum.filter(&Card.can_play_on?(current_card, &1))
     cannot_play = hand -- can_play
-    "**#{formatted_hand(can_play)}** #{formatted_hand(cannot_play)}"
+    "**#{formatted_hand(can_play)} **#{formatted_hand(cannot_play)}"
   end
 
   defp current_player(game) do
