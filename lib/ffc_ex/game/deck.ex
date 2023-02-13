@@ -58,7 +58,7 @@ defmodule FfcEx.Game.Deck do
     card = case card do
       {wild, _} when Card.is_wildcard(wild) -> {wild, nil}
       _ -> card
-    end |> IO.inspect()
+    end
     if card in deck do
       {card, deck -- [card]}
     else

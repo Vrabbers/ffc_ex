@@ -7,7 +7,7 @@ defmodule FfcEx.Game do
   require Logger
   require Card
 
-  @enforce_keys [:id, :players, :hands, :spectators, :deck, :current_card]
+  @enforce_keys [:id, :players, :hands, :spectators, :deck, :current_card, :drawn_card]
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
@@ -16,7 +16,8 @@ defmodule FfcEx.Game do
           hands: %{required(User.id()) => {Deck.t()}},
           spectators: [User.id()],
           deck: Deck.t(),
-          current_card: Card.t() | nil
+          current_card: Card.t() | nil,
+          drawn_card: Cart.t() | nil
         }
 
   @spec playercount_valid?(non_neg_integer()) :: boolean()
@@ -60,7 +61,8 @@ defmodule FfcEx.Game do
       hands: hands,
       spectators: lobby.spectators,
       deck: deck,
-      current_card: last
+      current_card: last,
+      drawn_card: nil
     }
 
     {:ok, game}
@@ -76,7 +78,7 @@ defmodule FfcEx.Game do
   @impl true
   def handle_cast({user_id, {:play, card_str}}, game) do
     if current_player(game) != user_id do
-      tell(user_id, "You can't use this when you're not playing!")
+      tell(user_id, "You can't use this when it's not your turn!")
       {:noreply, game}
     else
       case Card.parse(card_str) do
@@ -92,6 +94,22 @@ defmodule FfcEx.Game do
           tell(user_id, "Invalid card!")
           {:noreply, game}
       end
+    end
+  end
+
+  @impl true
+  def handle_cast({user_id, :draw}, game) do
+    cond do
+      current_player(game) != user_id ->
+        tell(user_id, "You can't use this when it's not your turn!")
+        {:noreply, game}
+
+      game.drawn_card != nil ->
+        tell(user_id, "You can't `draw` twice! You must play the card you've drawn!")
+        {:noreply, game}
+
+      true ->
+        {:noreply, do_draw(game, user_id)}
     end
   end
 
@@ -241,6 +259,18 @@ defmodule FfcEx.Game do
       }
       |> put_id_footer(game)
 
+    embed =
+      if !Enum.any?(game.hands[current_player], &Card.can_play_on?(game.current_card, &1)) do
+        Embed.put_field(
+          embed,
+          "Draw",
+          "You cannot play any of your cards. As such, use `draw` to draw a card from the deck",
+          false
+        )
+      else
+        embed
+      end
+
     tell(current_player, embeds: [embed])
     game
   end
@@ -251,6 +281,10 @@ defmodule FfcEx.Game do
     cond do
       !Deck.has_card?(player_hand, card) ->
         tell(player_id, "You don't have this card!")
+        game
+
+      game.drawn_card != nil && !Card.equal_nw?(game.drawn_card, card) ->
+        tell(player_id, "You must play the card you've drawn!")
         game
 
       !Card.can_play_on?(game.current_card, card) ->
@@ -280,6 +314,59 @@ defmodule FfcEx.Game do
 
         do_turn(game)
         game
+    end
+  end
+
+  defp do_draw(game, player_id) do
+    player_hand = game.hands[player_id]
+    {drawn_card, deck} = Deck.get_random(game.deck)
+
+    broadcast_except(game, [player_id],
+      embeds: [
+        %Embed{
+          title: "Card drawn",
+          description: "#{username(player_id)} has drawn a card from the deck.",
+          thumbnail: %Thumbnail{url: "attachment://draw.png"}
+        }
+        |> put_id_footer(game)
+      ],
+      files: ["./img/draw.png"]
+    )
+
+    new_hand = Deck.put_back(player_hand, drawn_card)
+    new_hands = Map.put(game.hands, player_id, new_hand)
+    game = %Game{game | hands: new_hands, deck: deck}
+
+    if Card.can_play_on?(game.current_card, drawn_card) do
+      tell(player_id,
+        embeds: [
+          %Embed{
+            title: "Card drawn",
+            description:
+              "You have drawn a **#{Card.to_string(drawn_card)}**. As you may play this card, " <>
+                "use `play #{Card.to_string(drawn_card)}` to play it.",
+            thumbnail: %Thumbnail{url: "attachment://draw.png"}
+          }
+          |> put_id_footer(game)
+        ],
+        files: ["./img/draw.png"]
+      )
+
+      game
+    else
+      tell(player_id,
+        embeds: [
+          %Embed{
+            title: "Card drawn",
+            description: "You have drawn a **#{Card.to_string(drawn_card)}**.",
+            thumbnail: %Thumbnail{url: "attachment://draw.png"}
+          }
+          |> put_id_footer(game)
+        ],
+        files: ["./img/draw.png"]
+      )
+
+      game |> advance_player() |> do_turn()
     end
   end
 
@@ -316,7 +403,7 @@ defmodule FfcEx.Game do
           embeds: [
             %Embed{
               title: "Color changed!",
-              description: "#The color has changed to **#{col}**.",
+              description: "The color has changed to **#{col}**.",
               thumbnail: %Thumbnail{url: "attachment://#{col}.png"}
             }
             |> put_id_footer(game)
@@ -397,7 +484,7 @@ defmodule FfcEx.Game do
   defp advance_player(game) do
     [first | others] = game.players
     players = others ++ [first]
-    %Game{game | players: players}
+    %Game{game | players: players, drawn_card: nil}
   end
 
   defp advance_twice(game) do

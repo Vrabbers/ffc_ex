@@ -22,10 +22,21 @@ defmodule FfcEx.Game.Card do
   def can_play_on?(card_down, card_to_play) do
     case {card_down, card_to_play} do
       {nil, _} -> false
-      {_, {w, _}} when w in [:wildcard, :wildcard_draw4] -> true
-      {{w, c}, {c, _}} when w in [:wildcard, :wildcard_draw4] -> true
+      {_, {w, _}} when is_wildcard(w) -> true
+      {{w, c}, {c, _}} when is_wildcard(w) -> true
       {{a1, a2}, {b1, b2}} when a1 == b1 or a2 == b2 -> true
       _ -> false
+    end
+  end
+
+  def equal_nw?(card1, card2) do
+    strip_wild(card1) == strip_wild(card2)
+  end
+
+  defp strip_wild(card) do
+    case card do
+      {wild, _} when is_wildcard(wild) -> {wild, nil}
+      _ -> card
     end
   end
 
