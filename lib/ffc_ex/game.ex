@@ -165,17 +165,17 @@ defmodule FfcEx.Game do
   def handle_cast({user_id, :nudge}, game) do
     if current_player(game) == user_id do
       tell(user_id, "It's your turn right now. Go nudge yourself!")
+      {:noreply, game}
     else
       tell(
         current_player(game),
         "#{username(user_id)} wished to remind you it's your turn to play by giving you a gentle" <>
-          "nudge. *Nudge!*"
+          " nudge. *Nudge!*"
       )
 
       tell(user_id, "I've nudged #{username(current_player(game))}.")
+      {:noreply, game}
     end
-    {:noreply, game}
-
   end
 
   @impl true
@@ -369,7 +369,7 @@ defmodule FfcEx.Game do
         files: ["./img/draw.png"]
       )
 
-      game
+      %Game{game | drawn_card: drawn_card}
     else
       tell(player_id,
         embeds: [
@@ -442,7 +442,11 @@ defmodule FfcEx.Game do
         advance_twice(game)
 
       {_, :reverse} ->
-        game |> reverse_playing_order() |> advance_player()
+        if length(game.players) == 2 do
+          game |> reverse_playing_order() |> advance_player()
+        else
+          game |> reverse_playing_order()
+        end
 
       {_, :draw2} ->
         game |> draw_next(2) |> advance_twice()
@@ -484,14 +488,15 @@ defmodule FfcEx.Game do
     Enum.at(game.players, 1)
   end
 
-  defp formatted_hand(hand) do
-    hand |> Enum.map(&Card.to_string/1) |> Enum.sort() |> Enum.join(" ")
-  end
-
   defp formatted_hand(hand, current_card) do
-    can_play = hand |> Enum.filter(&Card.can_play_on?(current_card, &1))
-    cannot_play = hand -- can_play
-    "**#{formatted_hand(can_play)} **#{formatted_hand(cannot_play)}"
+    hand
+    |> Enum.map(fn card -> {Card.to_string(card), Card.can_play_on?(current_card, card)} end)
+    |> Enum.sort_by(fn {card, _} -> card end, :asc)
+    |> Enum.map(fn
+      {card, true} -> "**#{card}**"
+      {card, false} -> card
+    end)
+    |> Enum.join(" ")
   end
 
   defp current_player(game) do
