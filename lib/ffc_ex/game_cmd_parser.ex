@@ -14,6 +14,7 @@ defmodule FfcEx.GameCmdParser do
       {"state"} -> :state
       {"status"} -> :status
       {"draw"} -> :draw
+      {"nudge"} -> :nudge
       {"chat", arg} -> {:chat, arg}
       {"play", card} -> {:play, card}
       _ -> {:chat, rest}

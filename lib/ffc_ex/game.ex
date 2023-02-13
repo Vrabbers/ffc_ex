@@ -162,6 +162,23 @@ defmodule FfcEx.Game do
   end
 
   @impl true
+  def handle_cast({user_id, :nudge}, game) do
+    if current_player(game) == user_id do
+      tell(user_id, "It's your turn right now. Go nudge yourself!")
+    else
+      tell(
+        current_player(game),
+        "#{username(user_id)} wished to remind you it's your turn to play by giving you a gentle" <>
+          "nudge. *Nudge!*"
+      )
+
+      tell(user_id, "I've nudged #{username(current_player(game))}.")
+    end
+    {:noreply, game}
+
+  end
+
+  @impl true
   def handle_call({:is_part_of, user_id}, _from, game) do
     {:reply, user_id in participants(game), game}
   end
