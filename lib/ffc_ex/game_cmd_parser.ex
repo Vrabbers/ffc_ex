@@ -13,11 +13,11 @@ defmodule FfcEx.GameCmdParser do
       {"hand"} -> :hand
       {"state"} -> :state
       {"status"} -> :status
+      {"draw"} -> :draw
       {"chat", arg} -> {:chat, arg}
       {"play", card} -> {:play, card}
-      {_, _} -> {:chat, rest}
-      {_} -> {:chat, rest}
-    end
+      _ -> {:chat, rest}
+      end
     {game_id, result}
   end
 end

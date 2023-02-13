@@ -75,6 +75,7 @@ defmodule FfcEx.BaseConsumer do
       `ffc:ping` - checks if bot is online and shows general info.
       `ffc:help` - gets this message.
       `ffc:join` - starts a new game lobby or joins an existing one.
+      `ffc:spectate` - spectates a game lobby.
       `ffc:close` - closes the game lobby and starts the game.
       [Click here to view game instructions.](https://vrabbers.github.io/ffc_ex/game_instructions.html)
       """,
@@ -202,7 +203,7 @@ defmodule FfcEx.BaseConsumer do
       :player_count_invalid ->
         Api.create_message(
           msg.channel_id,
-          "Cannot close lobby as the number of players is invalid."
+          "The lobby was closed, but the game was not started as the player count is invalid."
         )
     end
   end

@@ -94,7 +94,8 @@ defmodule FfcEx.GameLobbies do
         {:reply, :cannot_close, state}
 
       !FfcEx.Game.playercount_valid?(length(lobby.players)) ->
-        {:reply, :player_count_invalid, state}
+        new_lobbies = Map.delete(lobbies, channel)
+        {:reply, :player_count_invalid, {new_lobbies, current_id}}
 
       true ->
         new_lobbies = Map.delete(lobbies, channel)
