@@ -77,7 +77,7 @@ defmodule FfcEx.BaseConsumer do
       `ffc:join` - starts a new game lobby or joins an existing one.
       `ffc:spectate` - spectates a game lobby.
       `ffc:close` - closes the game lobby and starts the game.
-      [Click here to view game instructions.](https://vrabbers.github.io/ffc_ex/game_instructions.html)
+      [Click here to view game instructions.](https://vrabbers.github.io/ffc_ex/index.html)
       """,
       color: Application.fetch_env!(:ffc_ex, :color)
     }

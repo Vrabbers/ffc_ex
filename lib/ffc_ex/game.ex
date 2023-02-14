@@ -198,7 +198,7 @@ defmodule FfcEx.Game do
           description: """
           Welcome to Final Fanstastic Card!
           
-          [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/game_instructions.html)
+          [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)
           """,
           thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
         }
