@@ -1,7 +1,7 @@
 defmodule FfcEx.Game do
   # Doesn't make much sense to try restarting a crashed game
   use GenServer, restart: :temporary
-  alias FfcEx.{DmCache, Game, Game.Card, Game.Deck, Lobby, PlayerRouter}
+  alias FfcEx.{DmCache, Game, Game.Card, Game.Deck, Lobby, PlayerRouter, GameRegistry}
   alias Nostrum.Struct.{Embed, Embed.Field, Embed.Thumbnail, User}
   alias Nostrum.Api
   require Logger
@@ -200,11 +200,11 @@ defmodule FfcEx.Game do
 
           [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/game_instructions.html)
           """,
-          thumbnail: %Thumbnail{url: "attachment://draw.png"}
+          thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
         }
         |> put_id_footer(game)
 
-      broadcast(game, embeds: [embed], files: ["./img/draw.png"])
+      broadcast(game, embeds: [embed])
       PlayerRouter.add_all_to(participants(game), game.id)
 
       do_turn(game)
@@ -319,18 +319,30 @@ defmodule FfcEx.Game do
           ]
         )
 
-        card_special_message(game, card)
-
         new_deck = Deck.put_back(game.deck, game.current_card)
         {_, new_hand} = Deck.remove(player_hand, card)
-        new_hands = Map.put(game.hands, player_id, new_hand)
 
-        game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
+        if length(new_hand) == 0 do
+          # Victory condition
+          author_img_url = User.avatar_url(Api.get_user!(player_id), "png")
 
-        game = do_card_effect(game, card)
-
-        do_turn(game)
-        game
+          end_game(game,
+            embeds: [
+              %Embed{
+                title: "Victory!",
+                description: "#{username(player_id)} has won the game!",
+                thumbnail: %Thumbnail{url: author_img_url}
+              }
+              |> put_id_footer(game)
+            ]
+          )
+        else
+          card_special_message(game, card)
+          new_hands = Map.put(game.hands, player_id, new_hand)
+          game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
+          game = do_card_effect(game, card)
+          do_turn(game)
+        end
     end
   end
 
@@ -461,8 +473,6 @@ defmodule FfcEx.Game do
       case amt do
         2 -> "draw2.png"
         4 -> "draw4.png"
-        6 -> "draw6.png"
-        _ -> "draw.png"
       end
 
     next_player = next_player(game)
@@ -482,6 +492,11 @@ defmodule FfcEx.Game do
     {drawn, deck} = Deck.get_many(game.deck, amt)
     hands = Map.update!(game.hands, next_player, &(drawn ++ &1))
     %Game{game | deck: deck, hands: hands}
+  end
+
+  defp end_game(game, message) do
+    broadcast(game, message)
+    GameRegistry.end_game(game.id)
   end
 
   defp next_player(game) do

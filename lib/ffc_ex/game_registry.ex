@@ -21,8 +21,14 @@ defmodule FfcEx.GameRegistry do
     GenServer.call(__MODULE__, {:create_game, lobby})
   end
 
+  @spec get_game(Lobby.id()) :: pid()
   def get_game(id) do
     GenServer.call(__MODULE__, {:get_game, id})
+  end
+
+  @spec end_game(Lobby.id()) :: :ok
+  def end_game(id) do
+    GenServer.cast(__MODULE__, {:end_game, id})
   end
 
   # Server-side
@@ -48,6 +54,13 @@ defmodule FfcEx.GameRegistry do
   @impl true
   def handle_call({:get_game, id}, _from, {games, _} = state) do
     {:reply, games[id], state}
+  end
+
+  @impl true
+  def handle_cast({:end_game, id}, {games, references}) do
+    {game, games} = Map.pop(games, id)
+    Process.exit(game, :end_game_called)
+    {:noreply, {games, references}}
   end
 
   @impl true
