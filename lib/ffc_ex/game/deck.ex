@@ -47,7 +47,7 @@ defmodule FfcEx.Game.Deck do
   def has_card?(deck, card) do
     Enum.any?(deck, fn card_from_deck ->
       case card do
-        {wild, _} when wild in [:wildcard, :wildcard_draw4] -> {wild, nil} == card_from_deck
+        {wild, _} when Card.is_wildcard(wild) -> {wild, nil} == card_from_deck
         _ -> card == card_from_deck
       end
     end)
@@ -55,10 +55,12 @@ defmodule FfcEx.Game.Deck do
 
   @spec remove(t(), Card.t()) :: {Card.t(), t()} | :error
   def remove(deck, card) do
-    card = case card do
-      {wild, _} when Card.is_wildcard(wild) -> {wild, nil}
-      _ -> card
-    end
+    card =
+      case card do
+        {wild, _} when Card.is_wildcard(wild) -> {wild, nil}
+        _ -> card
+      end
+
     if card in deck do
       {card, deck -- [card]}
     else
@@ -68,115 +70,17 @@ defmodule FfcEx.Game.Deck do
 
   @spec new() :: t()
   def new() do
-    [
-      {:red, 0},
-      {:yellow, 0},
-      {:green, 0},
-      {:blue, 0},
-      {:red, 1},
-      {:red, 2},
-      {:red, 3},
-      {:red, 4},
-      {:red, 5},
-      {:red, 6},
-      {:red, 7},
-      {:red, 8},
-      {:red, 9},
-      {:red, :reverse},
-      {:red, :skip},
-      {:red, :draw2},
-      {:red, 1},
-      {:red, 2},
-      {:red, 3},
-      {:red, 4},
-      {:red, 5},
-      {:red, 6},
-      {:red, 7},
-      {:red, 8},
-      {:red, 9},
-      {:red, :reverse},
-      {:red, :skip},
-      {:red, :draw2},
-      {:yellow, 1},
-      {:yellow, 2},
-      {:yellow, 3},
-      {:yellow, 4},
-      {:yellow, 5},
-      {:yellow, 6},
-      {:yellow, 7},
-      {:yellow, 8},
-      {:yellow, 9},
-      {:yellow, :reverse},
-      {:yellow, :skip},
-      {:yellow, :draw2},
-      {:yellow, 1},
-      {:yellow, 2},
-      {:yellow, 3},
-      {:yellow, 4},
-      {:yellow, 5},
-      {:yellow, 6},
-      {:yellow, 7},
-      {:yellow, 8},
-      {:yellow, 9},
-      {:yellow, :reverse},
-      {:yellow, :skip},
-      {:yellow, :draw2},
-      {:green, 1},
-      {:green, 2},
-      {:green, 3},
-      {:green, 4},
-      {:green, 5},
-      {:green, 6},
-      {:green, 7},
-      {:green, 8},
-      {:green, 9},
-      {:green, :reverse},
-      {:green, :skip},
-      {:green, :draw2},
-      {:green, 1},
-      {:green, 2},
-      {:green, 3},
-      {:green, 4},
-      {:green, 5},
-      {:green, 6},
-      {:green, 7},
-      {:green, 8},
-      {:green, 9},
-      {:green, :reverse},
-      {:green, :skip},
-      {:green, :draw2},
-      {:blue, 1},
-      {:blue, 2},
-      {:blue, 3},
-      {:blue, 4},
-      {:blue, 5},
-      {:blue, 6},
-      {:blue, 7},
-      {:blue, 8},
-      {:blue, 9},
-      {:blue, :reverse},
-      {:blue, :skip},
-      {:blue, :draw2},
-      {:blue, 1},
-      {:blue, 2},
-      {:blue, 3},
-      {:blue, 4},
-      {:blue, 5},
-      {:blue, 6},
-      {:blue, 7},
-      {:blue, 8},
-      {:blue, 9},
-      {:blue, :reverse},
-      {:blue, :skip},
-      {:blue, :draw2},
-      {:wildcard, nil},
-      {:wildcard, nil},
-      {:wildcard, nil},
-      {:wildcard, nil},
-      {:wildcard_draw4, nil},
-      {:wildcard_draw4, nil},
-      {:wildcard_draw4, nil},
-      {:wildcard_draw4, nil}
-    ]
+    (for col <- [:red, :green, :yellow, :blue] do
+      {col, 0}
+    end ++
+      for _i <- 1..2,
+          col <- [:red, :green, :yellow, :blue],
+          num <- Enum.to_list(1..9) ++ [:reverse, :skip, :draw2] do
+        {col, num}
+      end ++
+      for _i <- 1..4,
+          wild <- [:wildcard, :wildcard_draw4] do
+        {wild, nil}
+      end) |> Enum.shuffle()
   end
 end
