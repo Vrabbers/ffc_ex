@@ -42,7 +42,7 @@ body {
 #main {
     background-color: var(--white);
     color: var(--black);
-    width: 60em;
+    width: 50em;
     min-width: min-content;
     max-width: 100%;
     text-align: justify;

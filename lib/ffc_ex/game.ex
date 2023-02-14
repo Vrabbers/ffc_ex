@@ -197,7 +197,7 @@ defmodule FfcEx.Game do
           title: "Final Fantastic Card",
           description: """
           Welcome to Final Fanstastic Card!
-
+          
           [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/game_instructions.html)
           """,
           thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
@@ -229,25 +229,11 @@ defmodule FfcEx.Game do
   end
 
   defp broadcast_to(users, message) do
-    for user <- users do
-      tell(user, message)
-    end
-
-    :ok
+    Game.MessageQueue.broadcast_to(users, message)
   end
 
   defp tell(user, message) do
-    {:ok, dm_channel} = DmCache.create(user)
-
-    case Api.create_message(dm_channel, message) do
-      {:error, error} ->
-        Logger.error(
-          "Error telling #{inspect(user)} message: #{inspect(message)}: #{inspect(error)}"
-        )
-
-      {:ok, _} ->
-        :noop
-    end
+    Game.MessageQueue.tell(user, message)
   end
 
   defp put_id_footer(embed, game) do
@@ -287,6 +273,12 @@ defmodule FfcEx.Game do
       else
         embed
       end
+
+    broadcast_except(
+      game,
+      [current_player],
+      "*\##{game.id} - #{username(current_player)}'s turn.*"
+    )
 
     tell(current_player, embeds: [embed])
     game
