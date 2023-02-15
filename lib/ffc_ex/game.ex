@@ -7,7 +7,16 @@ defmodule FfcEx.Game do
   require Logger
   require Card
 
-  @enforce_keys [:id, :players, :hands, :spectators, :deck, :current_card, :drawn_card]
+  @enforce_keys [
+    :id,
+    :players,
+    :hands,
+    :spectators,
+    :deck,
+    :current_card,
+    :drawn_card,
+    :called_ffc
+  ]
   defstruct @enforce_keys
 
   @type t() :: %__MODULE__{
@@ -17,7 +26,8 @@ defmodule FfcEx.Game do
           spectators: [User.id()],
           deck: Deck.t(),
           current_card: Card.t() | nil,
-          drawn_card: Cart.t() | nil
+          drawn_card: Cart.t() | nil,
+          called_ffc: {User.id(), boolean()} | nil
         }
 
   @spec playercount_valid?(non_neg_integer()) :: boolean()
@@ -62,10 +72,48 @@ defmodule FfcEx.Game do
       spectators: lobby.spectators,
       deck: deck,
       current_card: last,
-      drawn_card: nil
+      drawn_card: nil,
+      called_ffc: nil
     }
 
     {:ok, game}
+  end
+
+  @impl true
+  def handle_call({:is_part_of, user_id}, _from, game) do
+    {:reply, user_id in participants(game), game}
+  end
+
+  @impl true
+  def handle_call(:start_game, _from, game) do
+    responses =
+      for user <- participants(game) do
+        {:ok, dm_channel} = DmCache.create(user)
+        {Api.create_message(dm_channel, "Starting game \##{game.id}..."), user}
+      end
+
+    if Enum.all?(responses, fn {{resp, _}, _} -> resp == :ok end) do
+      embed =
+        %Embed{
+          title: "Final Fantastic Card",
+          description: """
+          Welcome to Final Fanstastic Card!
+
+          [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)
+          """,
+          thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
+        }
+        |> put_id_footer(game)
+
+      broadcast(game, embeds: [embed])
+      PlayerRouter.add_all_to(participants(game), game.id)
+
+      do_turn(game)
+
+      {:reply, :ok, game}
+    else
+      {:stop, :error, {:cannot_dm, for({{:error, _}, user} <- responses, do: user)}, game}
+    end
   end
 
   @impl true
@@ -178,76 +226,78 @@ defmodule FfcEx.Game do
     end
   end
 
-  @impl true
-  def handle_call({:is_part_of, user_id}, _from, game) do
-    {:reply, user_id in participants(game), game}
+  def handle_cast({user_id, :ffc}, game) do
+    cond do
+      current_player(game) != user_id ->
+        tell(user_id, "You can't do this!")
+        {:noreply, game}
+
+      length(game.hands[user_id]) != 2 ->
+        tell(user_id, "You can't call FFC right now!")
+        {:noreply, game}
+
+      true ->
+        broadcast(game,
+          embeds: [
+            %Embed{
+              title: "FFC",
+              description: "**#{username(user_id)} has called FFC!**"
+            }
+            |> put_id_footer(game)
+          ]
+        )
+
+        {:noreply, %Game{game | called_ffc: {user_id, true}}}
+    end
   end
 
   @impl true
-  def handle_call(:start_game, _from, game) do
-    responses =
-      for user <- participants(game) do
-        {:ok, dm_channel} = DmCache.create(user)
-        {Api.create_message(dm_channel, "Starting game \##{game.id}..."), user}
-      end
+  def handle_cast({user_id, :challenge}, game) do
+    cond do
+      current_player(game) != user_id ->
+        tell(user_id, "You can't do this!")
+        {:noreply, game}
 
-    if Enum.all?(responses, fn {{resp, _}, _} -> resp == :ok end) do
-      embed =
+      match?({_, false}, game.called_ffc) ->
+        {forgot_ffc, false} = game.called_ffc
+
+        broadcast(game,
+          embeds: [
+            %Embed{
+              title: "FFC challenged!",
+              description:
+                "#{username(forgot_ffc)} forgot to call FFC and #{username(user_id)} has challenged!"
+            }
+            |> put_id_footer(game)
+          ]
+        )
+
+        {:noreply, game |> force_draw(forgot_ffc, 2)}
+
+      true ->
+        tell(user_id, "There is nothing to challenge right now!")
+        {:noreply, game}
+    end
+  end
+
+  @impl true
+  def handle_cast({user_id, :help}, game) do
+    tell(user_id,
+      embeds: [
         %Embed{
-          title: "Final Fantastic Card",
-          description: """
-          Welcome to Final Fanstastic Card!
-          
-          [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)
-          """,
-          thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
+          title: "Help",
+          description:
+            "[Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)"
         }
         |> put_id_footer(game)
-
-      broadcast(game, embeds: [embed])
-      PlayerRouter.add_all_to(participants(game), game.id)
-
-      do_turn(game)
-
-      {:reply, :ok, game}
-    else
-      {:stop, :error, {:cannot_dm, for({{:error, _}, user} <- responses, do: user)}, game}
-    end
-  end
-
-  @spec participants(Game.t()) :: [User.id()]
-  defp participants(game) do
-    game.players ++ game.spectators
-  end
-
-  defp broadcast(game, message) do
-    broadcast_to(participants(game), message)
-  end
-
-  defp broadcast_except(game, except_users, message) do
-    broadcast_to(participants(game) -- except_users, message)
-  end
-
-  defp broadcast_to(users, message) do
-    Game.MessageQueue.broadcast_to(users, message)
-  end
-
-  defp tell(user, message) do
-    Game.MessageQueue.tell(user, message)
-  end
-
-  defp put_id_footer(embed, game) do
-    embed = Embed.put_footer(embed, "Game \##{game.id}")
-
-    unless embed.color do
-      Embed.put_color(embed, Application.fetch_env!(:ffc_ex, :color))
-    else
-      embed
-    end
+      ]
+    )
   end
 
   defp do_turn(game) do
     current_player = current_player(game)
+
+    must_draw = !Enum.any?(game.hands[current_player], &Card.can_play_on?(game.current_card, &1))
 
     embed =
       %Embed{
@@ -261,18 +311,26 @@ defmodule FfcEx.Game do
         ]
       }
       |> put_id_footer(game)
+      |> put_field_if(
+        must_draw,
+        "Draw",
+        "You can't play any of your cards. Use `draw` to draw one from the deck."
+      )
+      |> then(
+        &case game.called_ffc do
+          {forgot_ffc, false} ->
+            Embed.put_field(
+              &1,
+              "FFC challenge",
+              "#{username(forgot_ffc)} forgot to call FFC. Use `!` to challenge."
+            )
 
-    embed =
-      if !Enum.any?(game.hands[current_player], &Card.can_play_on?(game.current_card, &1)) do
-        Embed.put_field(
-          embed,
-          "Draw",
-          "You cannot play any of your cards. As such, use `draw` to draw a card from the deck",
-          false
-        )
-      else
-        embed
-      end
+          _ ->
+            &1
+        end
+      )
+
+    tell(current_player, embeds: [embed])
 
     broadcast_except(
       game,
@@ -280,7 +338,6 @@ defmodule FfcEx.Game do
       "*\##{game.id} - #{username(current_player)}'s turn.*"
     )
 
-    tell(current_player, embeds: [embed])
     game
   end
 
@@ -297,7 +354,7 @@ defmodule FfcEx.Game do
         game
 
       !Card.can_play_on?(game.current_card, card) ->
-        tell(player_id, "This card can't be played! Cards that can be played are in **bold**.")
+        tell(player_id, "This card can't be played! Cards that can be played are in **__bold__**.")
         game
 
       true ->
@@ -333,6 +390,14 @@ defmodule FfcEx.Game do
           new_hands = Map.put(game.hands, player_id, new_hand)
           game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
           game = do_card_effect(game, card)
+
+          game =
+            if length(new_hand) == 1 && !match?({^player_id, true}, game.called_ffc) do
+              %Game{game | called_ffc: {player_id, false}}
+            else
+              %Game{game | called_ffc: nil}
+            end
+
           do_turn(game)
         end
     end
@@ -356,7 +421,7 @@ defmodule FfcEx.Game do
 
     new_hand = Deck.put_back(player_hand, drawn_card)
     new_hands = Map.put(game.hands, player_id, new_hand)
-    game = %Game{game | hands: new_hands, deck: deck}
+    game = %Game{game | hands: new_hands, deck: deck, called_ffc: nil}
 
     if Card.can_play_on?(game.current_card, drawn_card) do
       tell(player_id,
@@ -461,19 +526,24 @@ defmodule FfcEx.Game do
   end
 
   defp draw_next(game, amt) do
+    next_player = next_player(game)
+    force_draw(game, next_player, amt)
+  end
+
+  defp force_draw(game, player, amt) do
     draw_str =
       case amt do
         2 -> "draw2.png"
         4 -> "draw4.png"
+        6 -> "draw6.png"
+        _ -> "draw.png"
       end
-
-    next_player = next_player(game)
 
     broadcast(game,
       embeds: [
         %Embed{
           title: "Drawn cards",
-          description: "#{uname_discrim(next_player)} has been forced to draw #{amt} cards!",
+          description: "#{username(player)} has been forced to draw #{amt} cards!",
           thumbnail: %Thumbnail{url: "attachment://#{draw_str}"}
         }
         |> put_id_footer(game)
@@ -482,8 +552,39 @@ defmodule FfcEx.Game do
     )
 
     {drawn, deck} = Deck.get_many(game.deck, amt)
-    hands = Map.update!(game.hands, next_player, &(drawn ++ &1))
+    hands = Map.update!(game.hands, player, &(drawn ++ &1))
     %Game{game | deck: deck, hands: hands}
+  end
+
+  @spec participants(Game.t()) :: [User.id()]
+  defp participants(game) do
+    game.players ++ game.spectators
+  end
+
+  defp broadcast(game, message) do
+    broadcast_to(participants(game), message)
+  end
+
+  defp broadcast_except(game, except_users, message) do
+    broadcast_to(participants(game) -- except_users, message)
+  end
+
+  defp broadcast_to(users, message) do
+    Game.MessageQueue.broadcast_to(users, message)
+  end
+
+  defp tell(user, message) do
+    Game.MessageQueue.tell(user, message)
+  end
+
+  defp put_id_footer(embed, game) do
+    embed = Embed.put_footer(embed, "Game \##{game.id}")
+
+    if embed.color == nil do
+      Embed.put_color(embed, Application.fetch_env!(:ffc_ex, :color))
+    else
+      embed
+    end
   end
 
   defp end_game(game, message) do
@@ -500,7 +601,7 @@ defmodule FfcEx.Game do
     |> Enum.map(fn card -> {Card.to_string(card), Card.can_play_on?(current_card, card)} end)
     |> Enum.sort_by(fn {card, _} -> card end, :asc)
     |> Enum.map(fn
-      {card, true} -> "**#{card}**"
+      {card, true} -> "**__#{card}__**"
       {card, false} -> card
     end)
     |> Enum.join(" ")
@@ -532,5 +633,13 @@ defmodule FfcEx.Game do
   defp username(user_id) do
     {:ok, user} = Api.get_user(user_id)
     user.username
+  end
+
+  defp put_field_if(embed, condition, title, value, inline \\ nil) do
+    if condition do
+      Embed.put_field(embed, title, value, inline)
+    else
+      embed
+    end
   end
 end
