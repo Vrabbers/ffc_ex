@@ -98,7 +98,7 @@ defmodule FfcEx.Game do
           title: "Final Fantastic Card",
           description: """
           Welcome to Final Fanstastic Card!
-
+          
           [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)
           """,
           thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
@@ -163,18 +163,18 @@ defmodule FfcEx.Game do
 
   @impl true
   def handle_cast({user_id, :status}, game) do
+    [current | others] = game.players
+
     field_text =
-      game.players
-      |> Enum.map(fn user_id -> {username(user_id), length(game.hands[user_id])} end)
-      |> Enum.map(fn {uname, cards} -> "#{uname} - #{cards} cards" end)
-      |> Enum.join("\n")
+      "**#{format_user(game, current)}\n**" <>
+        (others |> Enum.map(&format_user(game, &1)) |> Enum.join("\n"))
 
     embed =
       %Embed{
         title: "Game status",
         fields: [
           %Field{name: "Current card", value: Card.to_string(game.current_card)},
-          %Field{name: "Players", value: field_text <> "\n**Play continues downwards**"}
+          %Field{name: "Players", value: field_text <> "\n*Play continues downwards*"}
         ],
         color: Application.fetch_env!(:ffc_ex, :color)
       }
@@ -266,7 +266,7 @@ defmodule FfcEx.Game do
             %Embed{
               title: "FFC challenged!",
               description:
-                "#{username(forgot_ffc)} forgot to call FFC and #{username(user_id)} has challenged!"
+                "#{username(forgot_ffc)} forgot to call FFC and #{username(user_id)} has challenged them!"
             }
             |> put_id_footer(game)
           ]
@@ -322,7 +322,7 @@ defmodule FfcEx.Game do
             Embed.put_field(
               &1,
               "FFC challenge",
-              "#{username(forgot_ffc)} forgot to call FFC. Use `!` to challenge."
+              "#{username(forgot_ffc)} forgot to call FFC. Use `!` to challenge them!"
             )
 
           _ ->
@@ -354,7 +354,7 @@ defmodule FfcEx.Game do
         game
 
       !Card.can_play_on?(game.current_card, card) ->
-        tell(player_id, "This card can't be played! Cards that can be played are in **__bold__**.")
+        tell(player_id, "This card can't be played! Cards that can be played are **__bold__**.")
         game
 
       true ->
@@ -633,6 +633,12 @@ defmodule FfcEx.Game do
   defp username(user_id) do
     {:ok, user} = Api.get_user(user_id)
     user.username
+  end
+
+  defp format_user(game, user_id) do
+    card_amt = length(game.hands[user_id])
+    card_plural = if card_amt == 1, do: "card", else: "cards"
+    "#{username(user_id)} – #{card_amt} #{card_plural}"
   end
 
   defp put_field_if(embed, condition, title, value, inline \\ nil) do
