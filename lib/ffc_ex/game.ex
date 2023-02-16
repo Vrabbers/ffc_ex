@@ -15,20 +15,22 @@ defmodule FfcEx.Game do
     :deck,
     :current_card,
     :drawn_card,
-    :called_ffc
+    :called_ffc,
+    :was_valid_wild4
   ]
   defstruct @enforce_keys
 
-  @type t() :: %__MODULE__{
-          id: Lobby.id(),
-          players: [User.id()],
-          hands: %{required(User.id()) => {Deck.t()}},
-          spectators: [User.id()],
-          deck: Deck.t(),
-          current_card: Card.t() | nil,
-          drawn_card: Cart.t() | nil,
-          called_ffc: {User.id(), boolean()} | nil
-        }
+  @opaque t() :: %__MODULE__{
+            id: Lobby.id(),
+            players: [User.id()],
+            hands: %{required(User.id()) => {Deck.t()}},
+            spectators: [User.id()],
+            deck: Deck.t(),
+            current_card: Card.t() | nil,
+            drawn_card: Cart.t() | nil,
+            called_ffc: {User.id(), boolean()} | nil,
+            was_valid_wild4: {User.id(), boolean()} | nil
+          }
 
   @spec playercount_valid?(non_neg_integer()) :: boolean()
   def playercount_valid?(count) do
@@ -73,7 +75,8 @@ defmodule FfcEx.Game do
       deck: deck,
       current_card: last,
       drawn_card: nil,
-      called_ffc: nil
+      called_ffc: nil,
+      was_valid_wild4: nil
     }
 
     {:ok, game}
@@ -98,7 +101,7 @@ defmodule FfcEx.Game do
           title: "Final Fantastic Card",
           description: """
           Welcome to Final Fanstastic Card!
-          
+
           [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)
           """,
           thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
@@ -125,23 +128,29 @@ defmodule FfcEx.Game do
 
   @impl true
   def handle_cast({user_id, {:play, card_str}}, game) do
-    if current_player(game) != user_id do
-      tell(user_id, "You can't use this when it's not your turn!")
-      {:noreply, game}
-    else
-      case Card.parse(card_str) do
-        {:ok, {_, nil}} ->
-          tell(user_id, "Please specify wildcard color!")
-          {:noreply, game}
+    cond do
+      current_player(game) != user_id ->
+        tell(user_id, "You can't play when it's not your turn!")
+        {:noreply, game}
 
-        {:ok, card} ->
-          game = do_play_card(game, user_id, card)
-          {:noreply, game}
+      game.was_valid_wild4 != nil ->
+        tell(user_id, "You must resolve the Wildcard Draw 4 challenge!")
+        {:noreply, game}
 
-        :error ->
-          tell(user_id, "Invalid card!")
-          {:noreply, game}
-      end
+      true ->
+        case Card.parse(card_str) do
+          {:ok, {_, nil}} ->
+            tell(user_id, "Please specify wildcard color!")
+            {:noreply, game}
+
+          {:ok, card} ->
+            game = do_play_card(game, user_id, card)
+            {:noreply, game}
+
+          :error ->
+            tell(user_id, "Invalid card!")
+            {:noreply, game}
+        end
     end
   end
 
@@ -156,8 +165,17 @@ defmodule FfcEx.Game do
         tell(user_id, "You can't `draw` twice! You must play the card you've drawn!")
         {:noreply, game}
 
+      game.was_valid_wild4 != nil ->
+        game =
+          %Game{game | was_valid_wild4: nil}
+          |> force_draw(user_id, 4)
+          |> advance_player()
+          |> do_turn()
+
+        {:noreply, game}
+
       true ->
-        {:noreply, do_draw(game, user_id)}
+        {:noreply, do_draw_self(game, user_id)}
     end
   end
 
@@ -260,21 +278,29 @@ defmodule FfcEx.Game do
         tell(user_id, "You can't do this!")
         {:noreply, game}
 
+      game.was_valid_wild4 != nil ->
+        {:noreply, do_wild4_challenge(game, user_id)}
+
       match?({_, false}, game.called_ffc) ->
         {forgot_ffc, false} = game.called_ffc
 
-        broadcast(game,
-          embeds: [
-            %Embed{
-              title: "FFC challenged!",
-              description:
-                "#{username(forgot_ffc)} forgot to call FFC and #{username(user_id)} has challenged them!"
-            }
-            |> put_id_footer(game)
-          ]
-        )
+        if forgot_ffc != user_id do
+          broadcast(game,
+            embeds: [
+              %Embed{
+                title: "FFC challenged!",
+                description:
+                  "#{username(forgot_ffc)} forgot to call FFC and #{username(user_id)} has challenged them!"
+              }
+              |> put_id_footer(game)
+            ]
+          )
 
-        {:noreply, game |> force_draw(forgot_ffc, 2)}
+          {:noreply, game |> force_draw(forgot_ffc, 2)}
+        else
+          tell(user_id, "There is nothing to challenge right now!")
+          {:noreply, game}
+        end
 
       true ->
         tell(user_id, "There is nothing to challenge right now!")
@@ -299,40 +325,60 @@ defmodule FfcEx.Game do
   defp do_turn(game) do
     current_player = current_player(game)
 
-    must_draw = !Enum.any?(game.hands[current_player], &Card.can_play_on?(game.current_card, &1))
+    if game.was_valid_wild4 == nil do
+      must_draw =
+        !Enum.any?(game.hands[current_player], &Card.can_play_on?(game.current_card, &1))
 
-    embed =
-      %Embed{
-        title: "Your turn!",
-        fields: [
-          %Field{name: "Current card", value: Card.to_string(game.current_card)},
-          %Field{
-            name: "Your hand",
-            value: formatted_hand(game.hands[current_player], game.current_card)
+      embed =
+        %Embed{
+          title: "Your turn!",
+          fields: [
+            %Field{name: "Current card", value: Card.to_string(game.current_card)},
+            %Field{
+              name: "Your hand",
+              value: formatted_hand(game.hands[current_player], game.current_card)
+            }
+          ]
+        }
+        |> put_id_footer(game)
+        |> put_field_if(
+          must_draw,
+          "Draw",
+          "You can't play any of your cards. Use `draw` to draw one from the deck."
+        )
+        |> then(
+          &case game.called_ffc do
+            {forgot_ffc, false} ->
+              put_field_if(
+                &1,
+                forgot_ffc != current_player,
+                "FFC challenge",
+                "#{username(forgot_ffc)} forgot to call FFC. Use `!` to challenge them!"
+              )
+
+            _ ->
+              &1
+          end
+        )
+
+      tell(current_player, embeds: [embed])
+    else
+      {challenged_player, _} = game.was_valid_wild4
+
+      tell(current_player,
+        embeds: [
+          %Embed{
+            title: "Wild Draw 4 challenge",
+            description: """
+            #{username(challenged_player)} has played a Wild Draw 4. If you think it was played \
+            illegaly, use `!` to challenge their decision. Use `draw` to accept and draw 4 cards.
+            *If you lose the challenge, you draw 6 cards. If you win, they draw 4 cards.*
+            """
           }
+          |> put_id_footer(game)
         ]
-      }
-      |> put_id_footer(game)
-      |> put_field_if(
-        must_draw,
-        "Draw",
-        "You can't play any of your cards. Use `draw` to draw one from the deck."
       )
-      |> then(
-        &case game.called_ffc do
-          {forgot_ffc, false} ->
-            Embed.put_field(
-              &1,
-              "FFC challenge",
-              "#{username(forgot_ffc)} forgot to call FFC. Use `!` to challenge them!"
-            )
-
-          _ ->
-            &1
-        end
-      )
-
-    tell(current_player, embeds: [embed])
+    end
 
     broadcast_except(
       game,
@@ -389,23 +435,35 @@ defmodule FfcEx.Game do
           )
         else
           card_special_message(game, card)
-          new_hands = Map.put(game.hands, player_id, new_hand)
-          game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
-          game = do_card_effect(game, card)
 
           game =
+            if match?({:wildcard_draw4, _}, card) do
+              %Game{
+                game
+                | was_valid_wild4:
+                    {player_id, !Enum.any?(new_hand, &Card.can_play_on?(game.current_card, &1))}
+              }
+            else
+              %Game{game | was_valid_wild4: nil}
+            end
+
+          new_hands = Map.put(game.hands, player_id, new_hand)
+
+          %Game{game | deck: new_deck, hands: new_hands, current_card: card}
+          |> do_card_effect(card)
+          |> then(fn game ->
             if length(new_hand) == 1 and !match?({^player_id, true}, game.called_ffc) do
               %Game{game | called_ffc: {player_id, false}}
             else
               %Game{game | called_ffc: nil}
             end
-
-          do_turn(game)
+          end)
+          |> do_turn()
         end
     end
   end
 
-  defp do_draw(game, player_id) do
+  defp do_draw_self(game, player_id) do
     player_hand = game.hands[player_id]
     {drawn_card, deck} = Deck.get_random(game.deck)
 
@@ -459,6 +517,32 @@ defmodule FfcEx.Game do
     end
   end
 
+  defp do_wild4_challenge(game, challenging_player) do
+    {challenged_player, was_valid?} = game.was_valid_wild4
+
+    broadcast(game,
+      embeds: [
+        %Embed{
+          title: "Wild Draw 4 challenge",
+          description: """
+          #{username(challenging_player)} has challenged the Wild Draw Four played \
+          by #{username(challenged_player)}, and has #{if was_valid?, do: "lost", else: "won"} \
+          the challenge.
+          """
+        }
+        |> put_id_footer(game)
+      ]
+    )
+
+    if was_valid? do
+      game |> force_draw(challenging_player, 6) |> advance_player()
+    else
+      game |> force_draw(challenged_player, 4)
+    end
+    |> then(&%Game{&1 | was_valid_wild4: nil})
+    |> do_turn()
+  end
+
   defp card_special_message(game, card) do
     case card do
       {x, :skip} when Card.is_color(x) ->
@@ -507,7 +591,7 @@ defmodule FfcEx.Game do
 
   defp do_card_effect(game, card) do
     case card do
-      {x, no} when Card.is_cardno(no) or x == :wildcard ->
+      {x, no} when Card.is_cardno(no) or Card.is_wildcard(x) ->
         advance_player(game)
 
       {_, :skip} ->
@@ -522,9 +606,6 @@ defmodule FfcEx.Game do
 
       {_, :draw2} ->
         game |> draw_next(2) |> advance_twice()
-
-      {:wildcard_draw4, _} ->
-        game |> draw_next(4) |> advance_twice()
     end
   end
 
@@ -539,7 +620,6 @@ defmodule FfcEx.Game do
         2 -> "draw2.png"
         4 -> "draw4.png"
         6 -> "draw6.png"
-        _ -> "draw.png"
       end
 
     broadcast(game,
