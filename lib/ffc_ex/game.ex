@@ -1,7 +1,7 @@
 defmodule FfcEx.Game do
   # Doesn't make much sense to try restarting a crashed game
   use GenServer, restart: :temporary
-  alias FfcEx.{DmCache, Game, Game.Card, Game.Deck, Lobby, PlayerRouter, GameRegistry}
+  alias FfcEx.{DmCache, Game, Game.Card, Game.Deck, Lobby, PlayerRouter}
   alias Nostrum.Struct.{Embed, Embed.Field, Embed.Thumbnail, User}
   alias Nostrum.Api
   require Logger
@@ -217,8 +217,10 @@ defmodule FfcEx.Game do
     else
       tell(
         current_player(game),
-        "#{username(user_id)} wished to remind you it's your turn to play by giving you a gentle" <>
-          " nudge. *Nudge!*"
+        """
+        #{username(user_id)} wished to remind you it's your turn to play by giving you a gentle \
+        nudge. *Nudge!*
+        """
       )
 
       tell(user_id, "I've nudged #{username(current_player(game))}.")
@@ -349,7 +351,7 @@ defmodule FfcEx.Game do
         tell(player_id, "You don't have this card!")
         game
 
-      game.drawn_card != nil && !Card.equal_nw?(game.drawn_card, card) ->
+      game.drawn_card != nil and !Card.equal_nw?(game.drawn_card, card) ->
         tell(player_id, "You must play the card you've drawn!")
         game
 
@@ -392,7 +394,7 @@ defmodule FfcEx.Game do
           game = do_card_effect(game, card)
 
           game =
-            if length(new_hand) == 1 && !match?({^player_id, true}, game.called_ffc) do
+            if length(new_hand) == 1 and !match?({^player_id, true}, game.called_ffc) do
               %Game{game | called_ffc: {player_id, false}}
             else
               %Game{game | called_ffc: nil}
@@ -428,9 +430,10 @@ defmodule FfcEx.Game do
         embeds: [
           %Embed{
             title: "Card drawn",
-            description:
-              "You have drawn a **#{Card.to_string(drawn_card)}**. As you may play this card, " <>
-                "use `play #{Card.to_string(drawn_card)}` to play it.",
+            description: """
+            You have drawn a **#{Card.to_string(drawn_card)}**. As you may play this card, \
+            use `play #{Card.to_string(drawn_card)}` to play it.
+            """,
             thumbnail: %Thumbnail{url: "attachment://draw.png"}
           }
           |> put_id_footer(game)
@@ -589,7 +592,7 @@ defmodule FfcEx.Game do
 
   defp end_game(game, message) do
     broadcast(game, message)
-    GameRegistry.end_game(game.id)
+    exit({:shutdown, :game_ended})
   end
 
   defp next_player(game) do

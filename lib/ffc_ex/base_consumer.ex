@@ -38,7 +38,7 @@ defmodule FfcEx.BaseConsumer do
         if game != nil do
           res = Game.do_cmd(game, msg.author.id, cmd)
 
-          if res && match?({:chat, _}, cmd) do
+          if res and match?({:chat, _}, cmd) do
             Api.create_reaction!(msg.channel_id, msg.id, "✅")
           end
         end
