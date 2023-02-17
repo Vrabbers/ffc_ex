@@ -105,7 +105,7 @@ defmodule FfcEx.Game do
         %Embed{
           title: "Final Fantastic Card",
           description: """
-          Welcome to Final Fanstastic Card!
+          Welcome to Final Fantastic Card!
 
           [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)
           """,
@@ -128,7 +128,6 @@ defmodule FfcEx.Game do
   def handle_cast({user_id, :state}, game) do
     # TODO: Debug command!
     tell(user_id, "```elixir\n#{inspect(game, pretty: true, limit: 10, width: 120)}```")
-    raise "i am a crashy"
     {:noreply, game}
   end
 

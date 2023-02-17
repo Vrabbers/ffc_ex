@@ -1,14 +1,9 @@
 defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
-  alias FfcEx.GameRegistry
-  alias FfcEx.PlayerRouter
-  alias FfcEx.GameCmdParser
-  alias FfcEx.Game
-  alias FfcEx.GameLobbies
-  alias Nostrum.Api
-  alias Nostrum.Struct.Embed
-  alias Nostrum.Util
+  alias FfcEx.{Game, GameCmdParser, GameLobbies, GameRegistry, PlayerRouter}
+  alias Nostrum.{Api, Struct.Embed, Util}
+  
   require Logger
 
   def start_link() do

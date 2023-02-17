@@ -1,16 +1,14 @@
 defmodule FfcEx.GameLobbies do
   use GenServer
 
-  alias FfcEx.GameRegistry
-  alias FfcEx.Lobby
-  alias Nostrum.Api
-  alias Nostrum.Struct.Channel
-  alias Nostrum.Struct.User
+  alias FfcEx.{GameRegistry, Lobby}
+  alias Nostrum.{Api, Struct.Channel, Struct.User}
+  
   require Logger
 
   @opaque state() :: {%{required(Channel.id()) => Lobby.t()}, current_id :: Lobby.id()}
 
-  ## Clientside
+  ## Client side
   def start_link([]) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end

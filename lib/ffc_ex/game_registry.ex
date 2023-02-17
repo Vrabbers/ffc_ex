@@ -55,7 +55,7 @@ defmodule FfcEx.GameRegistry do
   def handle_info({:DOWN, ref, :process, pid, reason}, {games, references}) do
     {id, references} = Map.pop(references, ref)
     games = Map.delete(games, id)
-    Logger.info("Game \##{id}, PID: #{inspect(pid)} closed (reason: #{inspect(reason)})")
+    Logger.notice("Game \##{id}, PID: #{inspect(pid)} closed (reason: #{inspect(reason)})")
     {:noreply, {games, references}}
   end
 

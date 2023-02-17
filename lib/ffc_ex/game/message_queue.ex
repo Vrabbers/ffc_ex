@@ -1,6 +1,7 @@
 defmodule FfcEx.Game.MessageQueue do
   alias FfcEx.DmCache
   alias Nostrum.Api
+
   use GenServer
 
   def start_link([]) do

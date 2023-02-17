@@ -1,9 +1,7 @@
 defmodule FfcEx.DmCache do
   use GenServer
 
-  alias Nostrum.Api
-  alias Nostrum.Struct.Channel
-  alias Nostrum.Struct.User
+  alias Nostrum.{Api, Struct.Channel, Struct.User}
 
   @spec start_link([]) :: {:ok, pid}
   def start_link([]) do

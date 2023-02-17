@@ -13,7 +13,6 @@ defmodule FfcEx.Game.Card do
   @spec is_valid_first_card?(t()) :: boolean()
   def is_valid_first_card?(card) do
     case card do
-      
       {_first, second} when is_cardno(second) -> true
       _ -> false
     end

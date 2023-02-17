@@ -1,5 +1,6 @@
 defmodule FfcEx.Game.Deck do
   alias FfcEx.Game.Card
+
   require Card
 
   @type t() :: [Card.t()]
