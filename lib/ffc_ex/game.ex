@@ -206,7 +206,7 @@ defmodule FfcEx.Game do
 
     field_text =
       "**#{format_user(game, current)}\n**" <>
-        (others |> Enum.map(&format_user(game, &1)) |> Enum.join("\n"))
+        (others |> Enum.map_join(" ", &format_user(game, &1)))
 
     embed =
       %Embed{
@@ -460,60 +460,64 @@ defmodule FfcEx.Game do
         game
 
       Card.can_play_on?(game.current_card, card) ->
-        broadcast(game,
-          embeds: [
-            %Embed{
-              title: "Card played!",
-              description: "#{username(player_id)} has played a **#{Card.to_string(card)}**"
-            }
-            |> put_id_footer(game)
-          ]
-        )
+        play_card_do_turn(game, card, player_id)
+    end
+  end
 
-        new_deck = Deck.put_back(game.deck, game.current_card)
-        {_, new_hand} = Deck.remove(player_hand, card)
+  defp play_card_do_turn(game, card, player_id) do
+    broadcast(game,
+      embeds: [
+        %Embed{
+          title: "Card played!",
+          description: "#{username(player_id)} has played a **#{Card.to_string(card)}**"
+        }
+        |> put_id_footer(game)
+      ]
+    )
 
-        if length(new_hand) == 0 do
-          # Victory condition
-          author_img_url = User.avatar_url(Api.get_user!(player_id), "png")
+    new_deck = Deck.put_back(game.deck, game.current_card)
+    {_, new_hand} = Deck.remove(game.hands[player_id], card)
 
-          end_game(game,
-            embeds: [
-              %Embed{
-                title: "Victory!",
-                description: "#{username(player_id)} has won the game!",
-                thumbnail: %Thumbnail{url: author_img_url}
-              }
-              |> put_id_footer(game)
-            ]
-          )
+    if Enum.empty?(new_hand) do
+      # Victory condition
+      author_img_url = User.avatar_url(Api.get_user!(player_id), "png")
+
+      end_game(game,
+        embeds: [
+          %Embed{
+            title: "Victory!",
+            description: "#{username(player_id)} has won the game!",
+            thumbnail: %Thumbnail{url: author_img_url}
+          }
+          |> put_id_footer(game)
+        ]
+      )
+    else
+      card_special_message(game, card)
+
+      game =
+        if match?({:wildcard_draw4, _}, card) do
+          %Game{
+            game
+            | was_valid_wild4:
+                {player_id, !Enum.any?(new_hand, &Card.can_play_on?(game.current_card, &1))}
+          }
         else
-          card_special_message(game, card)
-
-          game =
-            if match?({:wildcard_draw4, _}, card) do
-              %Game{
-                game
-                | was_valid_wild4:
-                    {player_id, !Enum.any?(new_hand, &Card.can_play_on?(game.current_card, &1))}
-              }
-            else
-              %Game{game | was_valid_wild4: nil}
-            end
-
-          new_hands = Map.put(game.hands, player_id, new_hand)
-
-          game =
-            %Game{game | deck: new_deck, hands: new_hands, current_card: card}
-            |> do_card_effect(card)
-
-          if length(new_hand) == 1 and !match?({^player_id, true}, game.called_ffc) do
-            %Game{game | called_ffc: {player_id, false}}
-          else
-            %Game{game | called_ffc: nil}
-          end
-          |> do_turn()
+          %Game{game | was_valid_wild4: nil}
         end
+
+      new_hands = Map.put(game.hands, player_id, new_hand)
+
+      game =
+        %Game{game | deck: new_deck, hands: new_hands, current_card: card}
+        |> do_card_effect(card)
+
+      if length(new_hand) == 1 and !match?({^player_id, true}, game.called_ffc) do
+        %Game{game | called_ffc: {player_id, false}}
+      else
+        %Game{game | called_ffc: nil}
+      end
+      |> do_turn()
     end
   end
 
@@ -715,15 +719,15 @@ defmodule FfcEx.Game do
     if player in game.players do
       broadcast(game, "*\##{game.id}* - #{username(player)} has dropped from the game.")
 
-      if !Game.playercount_valid?(length(game.players) - 1) do
-        end_game(game, "Game \##{game.id} has ended as there weren't enough players to continue.")
-      else
+      if Game.playercount_valid?(length(game.players) - 1) do
         was_current_player = current_player(game) == player
         players = game.players -- [player]
         {hand, hands} = Map.pop(game.hands, player)
         deck = Deck.put_back(game.deck, hand)
         game = %Game{game | players: players, hands: hands, deck: deck, drawn_card: nil}
         if was_current_player, do: do_turn(game), else: game
+      else
+        end_game(game, "Game \##{game.id} has ended as there weren't enough players to continue.")
       end
     else
       tell(player, "You have stopped spectating the game.")
@@ -744,11 +748,13 @@ defmodule FfcEx.Game do
     hand
     |> Enum.map(fn card -> {Card.to_string(card), Card.can_play_on?(current_card, card)} end)
     |> Enum.sort_by(fn {card, _} -> card end, :asc)
-    |> Enum.map(fn
-      {card, true} -> "**__#{card}__**"
-      {card, false} -> card
-    end)
-    |> Enum.join(" ")
+    |> Enum.map_join(
+      " ",
+      fn
+        {card, true} -> "**__#{card}__**"
+        {card, false} -> card
+      end
+    )
   end
 
   defp current_player(game) do

@@ -3,7 +3,7 @@ defmodule FfcEx.BaseConsumer do
 
   alias FfcEx.{Game, GameCmdParser, GameLobbies, GameRegistry, PlayerRouter}
   alias Nostrum.{Api, Struct.Embed, Util}
-  
+
   require Logger
 
   def start_link() do
@@ -92,7 +92,7 @@ defmodule FfcEx.BaseConsumer do
     version =
       case :os.version() do
         {major, minor, release} -> "#{major}.#{minor}.#{release}"
-        versionString -> versionString
+        str -> str
       end
 
     "#{type} v#{version}"
@@ -185,7 +185,7 @@ defmodule FfcEx.BaseConsumer do
               msg.channel_id,
               """
               Game \##{lobby.id} could not start as I have not been able to DM these players:
-              #{users |> Enum.map(&"<@#{&1}>") |> Enum.join(" ")}
+              #{users |> Enum.map_join(" ", &"<@#{&1}>")}
               Please change settings so I can send these people direct messages.
               """
             )
