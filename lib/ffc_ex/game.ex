@@ -81,6 +81,9 @@ defmodule FfcEx.Game do
       was_valid_wild4: nil
     }
 
+    # Use this to tell participants if I have crashed
+    Process.flag(:trap_exit, true)
+
     {:ok, game}
   end
 
@@ -125,6 +128,7 @@ defmodule FfcEx.Game do
   def handle_cast({user_id, :state}, game) do
     # TODO: Debug command!
     tell(user_id, "```elixir\n#{inspect(game, pretty: true, limit: 10, width: 120)}```")
+    raise "i am a crashy"
     {:noreply, game}
   end
 
@@ -359,6 +363,18 @@ defmodule FfcEx.Game do
   @impl true
   def handle_cast({user_id, :drop}, game) do
     {:noreply, game |> do_drop_player(user_id)}
+  end
+
+  @impl true
+  def terminate(reason, game) do
+    if reason != :normal do
+      Logger.error("Game \##{game.id} exited for abnormal reason: #{inspect(reason)}")
+
+      broadcast(
+        game,
+        "🔴 Unfortunately, game \##{game.id} has crashed. We apologize for the inconvenience."
+      )
+    end
   end
 
   defp do_turn(game) do
@@ -718,7 +734,7 @@ defmodule FfcEx.Game do
 
   defp end_game(game, message) do
     broadcast(game, message)
-    exit({:shutdown, :game_ended})
+    exit(:normal)
   end
 
   defp next_player(game) do
