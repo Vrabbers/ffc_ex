@@ -1,9 +1,11 @@
 defmodule FfcEx.Game do
   # Doesn't make much sense to try restarting a crashed game
   use GenServer, restart: :temporary
+
   alias FfcEx.{DmCache, Game, Game.Card, Game.Deck, Lobby, PlayerRouter}
-  alias Nostrum.Struct.{Embed, Embed.Field, Embed.Thumbnail, User}
   alias Nostrum.Api
+  alias Nostrum.Struct.{Embed, Embed.Field, Embed.Thumbnail, User}
+
   require Logger
   require Card
 
@@ -42,13 +44,13 @@ defmodule FfcEx.Game do
     GenServer.call(game, :start_game, :infinity)
   end
 
-  @spec is_part_of?(pid(), User.id()) :: boolean()
-  def is_part_of?(game, user) do
+  @spec part_of?(pid(), User.id()) :: boolean()
+  def part_of?(game, user) do
     GenServer.call(game, {:is_part_of, user})
   end
 
   def do_cmd(game, user, cmd) do
-    if is_part_of?(game, user) do
+    if part_of?(game, user) do
       GenServer.cast(game, {user, cmd})
       true
     else
@@ -137,7 +139,7 @@ defmodule FfcEx.Game do
         tell(user_id, "You must resolve the Wildcard Draw 4 challenge!")
         {:noreply, game}
 
-      true ->
+      game.was_valid_wild4 == nil ->
         case Card.parse(card_str) do
           {:ok, {_, nil}} ->
             tell(user_id, "Please specify wildcard color!")
@@ -174,8 +176,24 @@ defmodule FfcEx.Game do
 
         {:noreply, game}
 
-      true ->
+      game.drawn_card == nil and game.was_valid_wild4 == nil ->
         {:noreply, do_draw_self(game, user_id)}
+    end
+  end
+
+  @impl true
+  def handle_cast({user_id, :pass}, game) do
+    cond do
+      current_player(game) != user_id ->
+        tell(user_id, "You can't use this when it's not your turn!")
+        {:noreply, game}
+
+      game.drawn_card == nil ->
+        tell(user_id, "You can only pass if you've drawn a card.")
+        {:noreply, game}
+
+      game.drawn_card != nil ->
+        {:noreply, %Game{game | drawn_card: nil} |> advance_player() |> do_turn()}
     end
   end
 
@@ -223,7 +241,15 @@ defmodule FfcEx.Game do
 
   @impl true
   def handle_cast({user_id, {:chat, chat_msg}}, game) do
-    broadcast_except(game, [user_id], "*\##{game.id}* **#{uname_discrim(user_id)}:** #{chat_msg}")
+    str =
+      if user_id in game.players do
+        "*\##{game.id}* **#{uname_discrim(user_id)}:** #{chat_msg}"
+      else
+        "*\##{game.id} Spectator #{uname_discrim(user_id)}:* #{chat_msg}"
+      end
+
+    broadcast_except(game, [user_id], str)
+
     {:noreply, game}
   end
 
@@ -246,6 +272,7 @@ defmodule FfcEx.Game do
     end
   end
 
+  @impl true
   def handle_cast({user_id, :ffc}, game) do
     cond do
       current_player(game) != user_id ->
@@ -256,7 +283,7 @@ defmodule FfcEx.Game do
         tell(user_id, "You can't call FFC right now!")
         {:noreply, game}
 
-      true ->
+      length(game.hands[user_id]) == 2 ->
         broadcast(game,
           embeds: [
             %Embed{
@@ -322,6 +349,18 @@ defmodule FfcEx.Game do
     )
   end
 
+  @impl true
+  def handle_cast({user_id, :spectate}, game) do
+    game = game |> do_drop_player(user_id)
+    tell(user_id, "You are now spectating the game.")
+    {:noreply, %Game{game | spectators: game.spectators ++ [user_id]}}
+  end
+
+  @impl true
+  def handle_cast({user_id, :drop}, game) do
+    {:noreply, game |> do_drop_player(user_id)}
+  end
+
   defp do_turn(game) do
     current_player = current_player(game)
 
@@ -346,20 +385,20 @@ defmodule FfcEx.Game do
           "Draw",
           "You can't play any of your cards. Use `draw` to draw one from the deck."
         )
-        |> then(
-          &case game.called_ffc do
-            {forgot_ffc, false} ->
-              put_field_if(
-                &1,
-                forgot_ffc != current_player,
-                "FFC challenge",
-                "#{username(forgot_ffc)} forgot to call FFC. Use `!` to challenge them!"
-              )
 
-            _ ->
-              &1
-          end
-        )
+      embed =
+        case game.called_ffc do
+          {forgot_ffc, false} ->
+            put_field_if(
+              embed,
+              forgot_ffc != current_player,
+              "FFC challenge",
+              "#{username(forgot_ffc)} forgot to call FFC. Use `!` to challenge them!"
+            )
+
+          _ ->
+            embed
+        end
 
       tell(current_player, embeds: [embed])
     else
@@ -371,7 +410,7 @@ defmodule FfcEx.Game do
             title: "Wild Draw 4 challenge",
             description: """
             #{username(challenged_player)} has played a Wild Draw 4. If you think it was played \
-            illegaly, use `!` to challenge their decision. Use `draw` to accept and draw 4 cards.
+            illegally, use `!` to challenge their decision. Use `draw` to accept and draw 4 cards.
             *If you lose the challenge, you draw 6 cards. If you win, they draw 4 cards.*
             """
           }
@@ -405,7 +444,7 @@ defmodule FfcEx.Game do
         tell(player_id, "This card can't be played! Cards that can be played are **__bold__**.")
         game
 
-      true ->
+      Card.can_play_on?(game.current_card, card) ->
         broadcast(game,
           embeds: [
             %Embed{
@@ -449,15 +488,15 @@ defmodule FfcEx.Game do
 
           new_hands = Map.put(game.hands, player_id, new_hand)
 
-          %Game{game | deck: new_deck, hands: new_hands, current_card: card}
-          |> do_card_effect(card)
-          |> then(fn game ->
-            if length(new_hand) == 1 and !match?({^player_id, true}, game.called_ffc) do
-              %Game{game | called_ffc: {player_id, false}}
-            else
-              %Game{game | called_ffc: nil}
-            end
-          end)
+          game =
+            %Game{game | deck: new_deck, hands: new_hands, current_card: card}
+            |> do_card_effect(card)
+
+          if length(new_hand) == 1 and !match?({^player_id, true}, game.called_ffc) do
+            %Game{game | called_ffc: {player_id, false}}
+          else
+            %Game{game | called_ffc: nil}
+          end
           |> do_turn()
         end
     end
@@ -483,38 +522,25 @@ defmodule FfcEx.Game do
     new_hands = Map.put(game.hands, player_id, new_hand)
     game = %Game{game | hands: new_hands, deck: deck, called_ffc: nil}
 
-    if Card.can_play_on?(game.current_card, drawn_card) do
-      tell(player_id,
-        embeds: [
-          %Embed{
-            title: "Card drawn",
-            description: """
-            You have drawn a **#{Card.to_string(drawn_card)}**. As you may play this card, \
-            use `play #{Card.to_string(drawn_card)}` to play it.
-            """,
-            thumbnail: %Thumbnail{url: "attachment://draw.png"}
-          }
-          |> put_id_footer(game)
-        ],
-        files: ["./img/draw.png"]
-      )
+    tell(player_id,
+      embeds: [
+        %Embed{
+          title: "Card drawn",
+          description:
+            "You have drawn a **#{Card.to_string(drawn_card)}**.\n" <>
+              if Card.can_play_on?(game.current_card, drawn_card) do
+                "Use `play #{Card.to_string(drawn_card)}` to play this card now or use `pass`."
+              else
+                "Since you can't play this card, use `pass`."
+              end,
+          thumbnail: %Thumbnail{url: "attachment://draw.png"}
+        }
+        |> put_id_footer(game)
+      ],
+      files: ["./img/draw.png"]
+    )
 
-      %Game{game | drawn_card: drawn_card}
-    else
-      tell(player_id,
-        embeds: [
-          %Embed{
-            title: "Card drawn",
-            description: "You have drawn a **#{Card.to_string(drawn_card)}**.",
-            thumbnail: %Thumbnail{url: "attachment://draw.png"}
-          }
-          |> put_id_footer(game)
-        ],
-        files: ["./img/draw.png"]
-      )
-
-      game |> advance_player() |> do_turn()
-    end
+    %Game{game | drawn_card: drawn_card}
   end
 
   defp do_wild4_challenge(game, challenging_player) do
@@ -667,6 +693,26 @@ defmodule FfcEx.Game do
       Embed.put_color(embed, Application.fetch_env!(:ffc_ex, :color))
     else
       embed
+    end
+  end
+
+  defp do_drop_player(game, player) do
+    if player in game.players do
+      broadcast(game, "*\##{game.id}* - #{username(player)} has dropped from the game.")
+
+      if !Game.playercount_valid?(length(game.players) - 1) do
+        end_game(game, "Game \##{game.id} has ended as there weren't enough players to continue.")
+      else
+        was_current_player = current_player(game) == player
+        players = game.players -- [player]
+        {hand, hands} = Map.pop(game.hands, player)
+        deck = Deck.put_back(game.deck, hand)
+        game = %Game{game | players: players, hands: hands, deck: deck, drawn_card: nil}
+        if was_current_player, do: do_turn(game), else: game
+      end
+    else
+      tell(player, "You have stopped spectating the game.")
+      %Game{game | spectators: game.spectators -- [player]}
     end
   end
 

@@ -31,13 +31,15 @@ defmodule FfcEx.BaseConsumer do
               GameRegistry.get_game(id)
 
             x ->
-              PlayerRouter.set_for(msg.author.id, x)
               GameRegistry.get_game(x)
           end
 
-        if game != nil do
+        if game != nil and Game.part_of?(game, msg.author.id) do
           res = Game.do_cmd(game, msg.author.id, cmd)
 
+          if int != nil do
+            PlayerRouter.set_for(msg.author.id, int)
+          end
           if res and match?({:chat, _}, cmd) do
             Api.create_reaction!(msg.channel_id, msg.id, "✅")
           end

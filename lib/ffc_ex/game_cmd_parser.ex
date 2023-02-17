@@ -6,20 +6,24 @@ defmodule FfcEx.GameCmdParser do
     end
   end
 
+
   defp do_parse(game_id, rest) do
-    split = String.split(rest, ~r{\s}, parts: 2) |> List.to_tuple()
+    split = String.split(rest, ~r/\s/, parts: 2) |> List.update_at(0, &String.downcase/1)
 
     result = case split do
-      {"hand"} -> :hand
-      {"state"} -> :state
-      {"status"} -> :status
-      {"draw"} -> :draw
-      {"nudge"} -> :nudge
-      {"help"} -> :help
-      {"ffc"} -> :ffc
-      {"!"} -> :challenge
-      {"chat", arg} -> {:chat, arg}
-      {"play", card} -> {:play, card}
+      ["hand"] -> :hand
+      ["state"] -> :state
+      ["status"] -> :status
+      ["draw"] -> :draw
+      ["pass"] -> :pass
+      ["nudge"] -> :nudge
+      ["help"] -> :help
+      ["ffc"] -> :ffc
+      ["!"] -> :challenge
+      ["drop"] -> :drop
+      ["spectate"] -> :spectate
+      ["chat", arg] -> {:chat, arg}
+      ["play", card] -> {:play, card}
       _ -> {:chat, rest}
       end
     {game_id, result}

@@ -36,7 +36,7 @@ defmodule FfcEx.GameRegistry do
   @impl true
   def handle_call({:create_game, lobby}, _from, {games, references}) do
     if Map.has_key?(games, lobby.id) do
-      raise "This game ID already exists in the registry. Game IDs must be unique."
+      raise ArgumentError, "game IDs must be unique"
     else
       {:ok, game} = GameSupervisor.start_child(lobby)
       games = Map.put(games, lobby.id, game)

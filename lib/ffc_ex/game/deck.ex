@@ -35,8 +35,16 @@ defmodule FfcEx.Game.Deck do
     end)
   end
 
-  @spec put_back(t(), Card.t()) :: t()
-  def put_back(deck, card) do
+  @spec put_back(t(), Card.t() | [Card.t()]) :: t()
+  def put_back(deck, [card | others]) do
+    deck |> put_back(card) |> put_back(others)
+  end
+
+  def put_back(deck, []) do
+    deck
+  end
+
+  def put_back(deck, card) when is_tuple(card) do
     case card do
       {x, _} when x in [:wildcard, :wildcard_draw4] -> [{x, nil} | deck]
       _ -> [card | deck]
@@ -70,17 +78,24 @@ defmodule FfcEx.Game.Deck do
 
   @spec new() :: t()
   def new() do
-    (for col <- [:red, :green, :yellow, :blue] do
-      {col, 0}
-    end ++
+    zero_cards =
+      for col <- [:red, :green, :yellow, :blue] do
+        {col, 0}
+      end
+
+    col_cards =
       for _i <- 1..2,
           col <- [:red, :green, :yellow, :blue],
           num <- Enum.to_list(1..9) ++ [:reverse, :skip, :draw2] do
         {col, num}
-      end ++
+      end
+
+    wildcards =
       for _i <- 1..4,
           wild <- [:wildcard, :wildcard_draw4] do
         {wild, nil}
-      end) |> Enum.shuffle()
+      end
+
+    Enum.shuffle(zero_cards ++ col_cards ++ wildcards)
   end
 end
