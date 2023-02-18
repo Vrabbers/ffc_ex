@@ -18,7 +18,9 @@ defmodule FfcEx.Game do
     :current_card,
     :drawn_card,
     :called_ffc,
-    :was_valid_wild4
+    :was_valid_wild4,
+    :house_rules,
+    :cml_draw
   ]
   defstruct @enforce_keys
 
@@ -31,7 +33,9 @@ defmodule FfcEx.Game do
             current_card: Card.t() | nil,
             drawn_card: Cart.t() | nil,
             called_ffc: {User.id(), boolean()} | nil,
-            was_valid_wild4: {User.id(), boolean()} | nil
+            was_valid_wild4: {User.id(), boolean()} | nil,
+            house_rules: [atom()],
+            cml_draw: pos_integer() | nil
           }
 
   @spec playercount_valid?(non_neg_integer()) :: boolean()
@@ -78,7 +82,9 @@ defmodule FfcEx.Game do
       current_card: last,
       drawn_card: nil,
       called_ffc: nil,
-      was_valid_wild4: nil
+      was_valid_wild4: nil,
+      house_rules: lobby.house_rules,
+      cml_draw: nil
     }
 
     # Use this to tell participants if I have crashed
@@ -179,7 +185,16 @@ defmodule FfcEx.Game do
 
         {:noreply, game}
 
-      game.drawn_card == nil and game.was_valid_wild4 == nil ->
+      game.cml_draw != nil ->
+        game =
+          %Game{game | cml_draw: nil}
+          |> force_draw(user_id, game.cml_draw)
+          |> advance_player()
+          |> do_turn()
+
+        {:noreply, game}
+
+      game.cml_draw == nil and game.drawn_card == nil and game.was_valid_wild4 == nil ->
         {:noreply, do_draw_self(game, user_id)}
     end
   end
@@ -206,7 +221,7 @@ defmodule FfcEx.Game do
 
     field_text =
       "**#{format_user(game, current)}\n**" <>
-        (others |> Enum.map_join(" ", &format_user(game, &1)))
+        (others |> Enum.map_join("\n", &format_user(game, &1)))
 
     embed =
       %Embed{
@@ -379,59 +394,10 @@ defmodule FfcEx.Game do
   defp do_turn(game) do
     current_player = current_player(game)
 
-    if game.was_valid_wild4 == nil do
-      must_draw =
-        !Enum.any?(game.hands[current_player], &Card.can_play_on?(game.current_card, &1))
-
-      embed =
-        %Embed{
-          title: "Your turn!",
-          fields: [
-            %Field{name: "Current card", value: Card.to_string(game.current_card)},
-            %Field{
-              name: "Your hand",
-              value: formatted_hand(game.hands[current_player], game.current_card)
-            }
-          ]
-        }
-        |> put_id_footer(game)
-        |> put_field_if(
-          must_draw,
-          "Draw",
-          "You can't play any of your cards. Use `draw` to draw one from the deck."
-        )
-
-      embed =
-        case game.called_ffc do
-          {forgot_ffc, false} ->
-            put_field_if(
-              embed,
-              forgot_ffc != current_player,
-              "FFC challenge",
-              "#{username(forgot_ffc)} forgot to call FFC. Use `!` to challenge them!"
-            )
-
-          _ ->
-            embed
-        end
-
-      tell(current_player, embeds: [embed])
-    else
-      {challenged_player, _} = game.was_valid_wild4
-
-      tell(current_player,
-        embeds: [
-          %Embed{
-            title: "Wild Draw 4 challenge",
-            description: """
-            #{username(challenged_player)} has played a Wild Draw 4. If you think it was played \
-            illegally, use `!` to challenge their decision. Use `draw` to accept and draw 4 cards.
-            *If you lose the challenge, you draw 6 cards. If you win, they draw 4 cards.*
-            """
-          }
-          |> put_id_footer(game)
-        ]
-      )
+    cond do
+      game.was_valid_wild4 != nil -> wild4_challenge_turn(game)
+      game.cml_draw != nil -> cml_draw_turn(game)
+      game.was_valid_wild4 == nil and game.cml_draw == nil -> normal_turn(game)
     end
 
     broadcast_except(
@@ -443,7 +409,90 @@ defmodule FfcEx.Game do
     game
   end
 
-  defp do_play_card(game, player_id, card) do
+  defp normal_turn(game) do
+    current_player = current_player(game)
+
+    embed =
+      %Embed{
+        title: "Your turn!",
+        fields: [
+          %Field{name: "Current card", value: Card.to_string(game.current_card)}
+        ]
+      }
+      |> put_id_footer(game)
+      |> put_cond_fields(game)
+
+    tell(current_player, embeds: [embed])
+  end
+
+  defp wild4_challenge_turn(game) do
+    current_player = current_player(game)
+    {challenged_player, _} = game.was_valid_wild4
+
+    tell(current_player,
+      embeds: [
+        %Embed{
+          title: "Wild Draw 4 challenge",
+          description: """
+          #{username(challenged_player)} has played a Wild Draw 4. If you think it was played \
+          illegally, use `!` to challenge their decision. Use `draw` to accept and draw 4 cards.
+          *If you lose the challenge, you draw 6 cards. If you win, they draw 4 cards.*
+          """
+        }
+        |> put_id_footer(game)
+      ]
+    )
+  end
+
+  defp cml_draw_turn(game) do
+    current_player = current_player(game)
+
+    tell(current_player,
+      embeds: [
+        %Embed{
+          title: "Your turn!",
+          description: """
+          This turn, you must play a Draw 2 card with `play` or draw the #{game.cml_draw} \
+          accumulated cards with `draw`
+          """
+        }
+        |> put_cond_fields(game)
+        |> put_id_footer(game)
+      ]
+    )
+  end
+
+  defp put_cond_fields(embed, game) do
+    current_player = current_player(game)
+    must_draw = !Enum.any?(game.hands[current_player], &Card.can_play_on?(game.current_card, &1))
+
+    embed =
+      embed
+      |> Embed.put_field(
+        "Your hand",
+        formatted_hand(game.hands[current_player], game.current_card)
+      )
+      |> put_field_if(
+        must_draw and game.cml_draw == nil,
+        "Draw",
+        "You can't play any of your cards. Use `draw` to draw one from the deck."
+      )
+
+    case game.called_ffc do
+      {forgot_ffc, false} ->
+        put_field_if(
+          embed,
+          forgot_ffc != current_player,
+          "FFC challenge",
+          "#{username(forgot_ffc)} forgot to call FFC. Use `!` to challenge them!"
+        )
+
+      _ ->
+        embed
+    end
+  end
+
+  defp do_play_card(game, player_id, {_, card_type} = card) do
     player_hand = game.hands[player_id]
 
     cond do
@@ -459,7 +508,14 @@ defmodule FfcEx.Game do
         tell(player_id, "This card can't be played! Cards that can be played are **__bold__**.")
         game
 
-      Card.can_play_on?(game.current_card, card) ->
+      Card.can_play_on?(game.current_card, card) and game.cml_draw == nil ->
+        play_card_do_turn(game, card, player_id)
+
+      game.cml_draw != nil and card_type != :draw2 ->
+        tell(player_id, "You must play a Draw 2 card or `draw` the cards.")
+        game
+
+      game.cml_draw != nil and card_type == :draw2 ->
         play_card_do_turn(game, card, player_id)
     end
   end
@@ -508,16 +564,17 @@ defmodule FfcEx.Game do
 
       new_hands = Map.put(game.hands, player_id, new_hand)
 
-      game =
-        %Game{game | deck: new_deck, hands: new_hands, current_card: card}
-        |> do_card_effect(card)
+      game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
+      game = do_card_effect(game, card)
 
-      if length(new_hand) == 1 and !match?({^player_id, true}, game.called_ffc) do
-        %Game{game | called_ffc: {player_id, false}}
-      else
-        %Game{game | called_ffc: nil}
-      end
-      |> do_turn()
+      game =
+        if length(new_hand) == 1 and !match?({^player_id, true}, game.called_ffc) do
+          %Game{game | called_ffc: {player_id, false}}
+        else
+          %Game{game | called_ffc: nil}
+        end
+
+      do_turn(game)
     end
   end
 
@@ -650,7 +707,12 @@ defmodule FfcEx.Game do
         end
 
       {_, :draw2} ->
-        game |> draw_next(2) |> advance_twice()
+        if :cumulative_draw in game.house_rules do
+          cml_draw = if game.cml_draw == nil, do: 2, else: game.cml_draw + 2
+          advance_player(%Game{game | cml_draw: cml_draw})
+        else
+          game |> draw_next(2) |> advance_twice()
+        end
     end
   end
 
@@ -665,6 +727,7 @@ defmodule FfcEx.Game do
         2 -> "draw2.png"
         4 -> "draw4.png"
         6 -> "draw6.png"
+        _ -> "draw.png"
       end
 
     broadcast(game,

@@ -57,7 +57,8 @@ defmodule FfcEx.BaseConsumer do
   defp handle_guild_commands(command, msg) do
     case command do
       "ping" -> ping(msg)
-      "join" -> join(msg)
+      "join" -> join(msg, [])
+      "join " <> args -> join(msg, args |> String.trim() |> String.to_charlist())
       "spectate" -> spectate(msg)
       "close" -> close(msg)
       "help" -> help(msg)
@@ -79,7 +80,7 @@ defmodule FfcEx.BaseConsumer do
       color: Application.fetch_env!(:ffc_ex, :color)
     }
 
-    Api.create_message(msg.channel_id, embeds: [embed])
+    Api.create_message!(msg.channel_id, embeds: [embed])
   end
 
   defp os_str() do
@@ -100,7 +101,7 @@ defmodule FfcEx.BaseConsumer do
 
   defp ping(msg) do
     prev = System.monotonic_time(:millisecond)
-    {:ok, message} = Api.create_message(msg.channel_id, "Pinging 📶...")
+    message = Api.create_message!(msg.channel_id, "Pinging 📶...")
     api_latency = System.monotonic_time(:millisecond) - prev
 
     latencies = Util.get_all_shard_latencies() |> Map.values()
@@ -123,8 +124,16 @@ defmodule FfcEx.BaseConsumer do
     Api.edit_message(message, content: "", embed: embed)
   end
 
-  defp join(msg) do
-    case GameLobbies.join(msg.channel_id, msg.author.id) do
+  defp house_rules(char) do
+    case char do
+      ?c -> :cumulative_draw
+      _ -> nil
+    end
+  end
+
+  defp join(msg, args) do
+    house_rules = args |> Enum.map(&house_rules/1) |> Enum.filter(& &1 != nil) |> Enum.uniq()
+    case GameLobbies.join(msg.channel_id, msg.author.id, house_rules) do
       {:new, id, timeout} ->
         prefix = Application.fetch_env!(:ffc_ex, :prefix)
 
@@ -141,32 +150,35 @@ defmodule FfcEx.BaseConsumer do
           color: Application.fetch_env!(:ffc_ex, :color)
         }
 
-        Api.create_message(msg.channel_id, embeds: [embed])
+        Api.create_message!(msg.channel_id, embeds: [embed])
 
       {:joined, id} ->
-        Api.create_message(
+        Api.create_message!(
           msg.channel_id,
           "**#{msg.author.username}\##{msg.author.discriminator}** has joined lobby \##{id}."
         )
 
       {:already_joined, id} ->
-        Api.create_message(msg.channel_id, "You have already joined game \##{id}!")
+        Api.create_message!(msg.channel_id, "You have already joined game \##{id}!")
+
+      :cannot_house_rules ->
+        Api.create_message!(msg.channel_id, "You cannot specify new house rules!")
     end
   end
 
   defp spectate(msg) do
     case GameLobbies.spectate(msg.channel_id, msg.author.id) do
       {:spectating, id} ->
-        Api.create_message(
+        Api.create_message!(
           msg.channel_id,
           "**#{msg.author.username}\##{msg.author.discriminator}** is spectating lobby \##{id}."
         )
 
       :cannot_spectate ->
-        Api.create_message(msg.channel_id, "Cannot spectate game!")
+        Api.create_message!(msg.channel_id, "Cannot spectate game!")
 
       :already_spectating ->
-        Api.create_message(msg.channel.id, "You are already spectating the game!")
+        Api.create_message!(msg.channel.id, "You are already spectating the game!")
     end
   end
 
@@ -175,13 +187,13 @@ defmodule FfcEx.BaseConsumer do
       {:closed, lobby, game} ->
         case Game.start_game(game) do
           :ok ->
-            Api.create_message(
+            Api.create_message!(
               msg.channel_id,
               "**Lobby \##{lobby.id}** was closed and the game is starting."
             )
 
           {:cannot_dm, users} ->
-            Api.create_message(
+            Api.create_message!(
               msg.channel_id,
               """
               Game \##{lobby.id} could not start as I have not been able to DM these players:
@@ -192,13 +204,13 @@ defmodule FfcEx.BaseConsumer do
         end
 
       :cannot_close ->
-        Api.create_message(
+        Api.create_message!(
           msg.channel_id,
           "Cannot close lobby as you are not the owner or it doesn't exist."
         )
 
       :player_count_invalid ->
-        Api.create_message(
+        Api.create_message!(
           msg.channel_id,
           "The lobby was closed, but the game was not started as the player count is invalid."
         )

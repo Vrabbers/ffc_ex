@@ -3,7 +3,7 @@ defmodule FfcEx.GameLobbies do
 
   alias FfcEx.{GameRegistry, Lobby}
   alias Nostrum.{Api, Struct.Channel, Struct.User}
-  
+
   require Logger
 
   @opaque state() :: {%{required(Channel.id()) => Lobby.t()}, current_id :: Lobby.id()}
@@ -13,10 +13,13 @@ defmodule FfcEx.GameLobbies do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  @spec join(Channel.id(), User.id()) ::
-          {:new, Lobby.id(), DateTime.t()} | {:joined, Lobby.id()} | {:already_joined, Lobby.id()}
-  def join(channel, user) do
-    GenServer.call(__MODULE__, {:join, channel, user})
+  @spec join(Channel.id(), User.id(), [atom()]) ::
+          {:new, Lobby.id(), DateTime.t()}
+          | {:joined, Lobby.id()}
+          | {:already_joined, Lobby.id()}
+          | :cannot_house_rules
+  def join(channel, user, house_rules) do
+    GenServer.call(__MODULE__, {:join, channel, user, house_rules})
   end
 
   @spec spectate(Channel.id(), User.id()) ::
@@ -39,12 +42,18 @@ defmodule FfcEx.GameLobbies do
   end
 
   @impl true
-  def handle_call({:join, channel, user}, _from, {lobbies, current_id} = state) do
+  def handle_call({:join, channel, user, house_rules}, _from, {lobbies, current_id} = state) do
     lobby = lobbies[channel]
 
     cond do
       lobby == nil ->
-        new_lobby = %Lobby{id: current_id, starting_user: user, players: [user]}
+        new_lobby = %Lobby{
+          id: current_id,
+          starting_user: user,
+          players: [user],
+          house_rules: house_rules
+        }
+
         new_lobbies = Map.put(lobbies, channel, new_lobby)
         new_id = current_id + 1
         timeout = DateTime.add(DateTime.utc_now(), 5, :minute)
@@ -54,12 +63,15 @@ defmodule FfcEx.GameLobbies do
       lobby.starting_user == user || Enum.any?(lobby.players, &(&1 == user)) ->
         {:reply, {:already_joined, lobby.id}, state}
 
-      true ->
+      house_rules == [] ->
         new_players = [user | lobby.players]
         new_spectators = lobby.spectators -- [user]
         new_lobby = %Lobby{lobby | players: new_players, spectators: new_spectators}
         new_lobbies = Map.put(lobbies, channel, new_lobby)
         {:reply, {:joined, lobby.id}, {new_lobbies, current_id}}
+
+      house_rules != [] ->
+        {:reply, :cannot_house_rules, state}
     end
   end
 

@@ -22,7 +22,7 @@ defmodule FfcEx.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:nostrum, "~> 0.6"}
+      {:nostrum, git: "https://github.com/Kraigie/nostrum.git"}
     ]
   end
 end
