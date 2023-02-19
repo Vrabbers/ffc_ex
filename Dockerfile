@@ -20,7 +20,7 @@ RUN mkdir /app
 WORKDIR /app
 
 RUN apk update
-RUN apk add libstdc++ ncurses gcompat openssl
+RUN apk add libstdc++ ncurses openssl
 
 COPY --from=build /app/_build/prod/rel/ffc_ex .
 
