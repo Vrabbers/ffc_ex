@@ -386,7 +386,10 @@ defmodule FfcEx.Game do
 
       broadcast(
         game,
-        "🔴 Unfortunately, game \##{game.id} has crashed. We apologize for the inconvenience."
+        """
+        🔴 Unfortunately, game \##{game.id} closed due to an error. \
+        Use `ffc:join` in the original channel to start a new game.
+        """
       )
     end
   end
