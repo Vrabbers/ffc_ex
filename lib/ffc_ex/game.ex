@@ -2,7 +2,7 @@ defmodule FfcEx.Game do
   # Doesn't make much sense to try restarting a crashed game
   use GenServer, restart: :temporary
 
-  alias FfcEx.{DmCache, Game, Game.Card, Game.Deck, Lobby, PlayerRouter}
+  alias FfcEx.{DmCache, Game, Game.Card, Game.Deck, Lobby, PlayerRouter, PrivDir}
   alias Nostrum.Api
   alias Nostrum.Struct.{Embed, Embed.Field, Embed.Thumbnail, User}
 
@@ -594,7 +594,7 @@ defmodule FfcEx.Game do
         }
         |> put_id_footer(game)
       ],
-      files: ["./img/draw.png"]
+      files: [PrivDir.file("draw.png")]
     )
 
     new_hand = Deck.put_back(player_hand, drawn_card)
@@ -616,7 +616,7 @@ defmodule FfcEx.Game do
         }
         |> put_id_footer(game)
       ],
-      files: ["./img/draw.png"]
+      files: [PrivDir.file("draw.png")]
     )
 
     %Game{game | drawn_card: drawn_card}
@@ -660,7 +660,7 @@ defmodule FfcEx.Game do
             }
             |> put_id_footer(game)
           ],
-          files: ["./img/skip.png"]
+          files: [PrivDir.file("skip.png")]
         )
 
       {x, :reverse} when Card.is_color(x) ->
@@ -673,7 +673,7 @@ defmodule FfcEx.Game do
             }
             |> put_id_footer(game)
           ],
-          files: ["./img/reverse.png"]
+          files: [PrivDir.file("reverse.png")]
         )
 
       {x, col} when Card.is_wildcard(x) and Card.is_color(col) ->
@@ -686,7 +686,7 @@ defmodule FfcEx.Game do
             }
             |> put_id_footer(game)
           ],
-          files: ["./img/#{col}.png"]
+          files: [PrivDir.file("#{col}.png")]
         )
 
       _ ->
@@ -725,7 +725,7 @@ defmodule FfcEx.Game do
   end
 
   defp force_draw(game, player, amt) do
-    draw_str =
+    file =
       case amt do
         2 -> "draw2.png"
         4 -> "draw4.png"
@@ -738,11 +738,11 @@ defmodule FfcEx.Game do
         %Embed{
           title: "Drawn cards",
           description: "#{username(player)} has been forced to draw #{amt} cards!",
-          thumbnail: %Thumbnail{url: "attachment://#{draw_str}"}
+          thumbnail: %Thumbnail{url: "attachment://#{file}"}
         }
         |> put_id_footer(game)
       ],
-      files: ["./img/#{draw_str}"]
+      files: [PrivDir.file(file)]
     )
 
     {drawn, deck} = Deck.get_many(game.deck, amt)
