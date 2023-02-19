@@ -2,7 +2,7 @@ defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
   alias FfcEx.{Game, GameCmdParser, GameLobbies, GameRegistry, PlayerRouter}
-  alias Nostrum.{Api, Struct.Embed, Util}
+  alias Nostrum.{Api, Struct.Embed, Struct.User, Util}
 
   require Logger
 
@@ -68,16 +68,17 @@ defmodule FfcEx.BaseConsumer do
 
   defp help(msg) do
     embed = %Embed{
-      title: "FFCex Help",
+      title: "ℹ️ FFCex Help",
       description: """
       `ffc:ping` - checks if bot is online and shows general info.
       `ffc:help` - gets this message.
       `ffc:join` - starts a new game lobby or joins an existing one.
       `ffc:spectate` - spectates a game lobby.
       `ffc:close` - closes the game lobby and starts the game.
-      [Click here to view game instructions.](https://vrabbers.github.io/ffc_ex/index.html)
+      [**Click here to view game instructions.**](https://vrabbers.github.io/ffc_ex/index.html)
       """,
-      color: Application.fetch_env!(:ffc_ex, :color)
+      color: Application.fetch_env!(:ffc_ex, :color),
+      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!())}
     }
 
     Api.create_message!(msg.channel_id, embeds: [embed])
@@ -118,7 +119,8 @@ defmodule FfcEx.BaseConsumer do
       **Operating system:** #{os_str()}
       """,
       timestamp: DateTime.to_iso8601(DateTime.utc_now()),
-      color: Application.fetch_env!(:ffc_ex, :color)
+      color: Application.fetch_env!(:ffc_ex, :color),
+      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!())}
     }
 
     Api.edit_message(message, content: "", embed: embed)

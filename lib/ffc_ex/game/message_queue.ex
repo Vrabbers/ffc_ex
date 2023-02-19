@@ -39,7 +39,7 @@ defmodule FfcEx.Game.MessageQueue do
   end
 
   defp do_tell(user_id, message) do
-    Task.Supervisor.async(FfcEx.Game.TaskSupervisor, fn -> do_send_to(user_id, message) end)
+    Task.Supervisor.async(FfcEx.Game.MsgQueueTaskSupervisor, fn -> do_send_to(user_id, message) end)
   end
 
   defp do_send_to(user_id, message) do
