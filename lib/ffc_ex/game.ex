@@ -131,13 +131,6 @@ defmodule FfcEx.Game do
   end
 
   @impl true
-  def handle_cast({user_id, :state}, game) do
-    # TODO: Debug command!
-    tell(user_id, "```elixir\n#{inspect(game, pretty: true, limit: 10, width: 120)}```")
-    {:noreply, game}
-  end
-
-  @impl true
   def handle_cast({user_id, {:play, card_str}}, game) do
     cond do
       current_player(game) != user_id ->

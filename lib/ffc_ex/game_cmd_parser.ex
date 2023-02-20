@@ -12,7 +12,6 @@ defmodule FfcEx.GameCmdParser do
 
     result = case split do
       ["hand"] -> :hand
-      ["state"] -> :state
       ["status"] -> :status
       ["draw"] -> :draw
       ["pass"] -> :pass
