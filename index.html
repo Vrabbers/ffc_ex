@@ -93,12 +93,22 @@
                 <li><code>!</code>: challenges another player;</li>
                 <li><code>nudge</code>: reminds the current player it is their turn;</li>
                 <li><code>ffc</code>: call out FFC to indicate you only have 1 card left;</li>
-                <li><code>drop</code>: leave the room;</li>
+                <li><code>drop</code>: leave the room. If spectating, stop spectating;</li>
                 <li><code>spectate</code>: leave the game and start spectating.</li>
             </ul>
             <p>
                 An unrecognised command will be sent as a chat message directly.
             </p>
+            <h2 id="house-rules">House rules</h2>
+            <p>
+                In the initial <code>ffc:join</code> command, you may add letters to specify house rules, such as
+                <code>ffc:join c</code>:
+            </p>
+
+            <ul>
+                <li><code>c</code>: cumulative draw, where consecutive plays of Draw 2 cards accumulate cards until
+                    someone cannot play a Draw 2 card. Then, that player draws all accumulated cards.</li>
+            </ul>
         </div>
         <div id="footer">
             <hr>
