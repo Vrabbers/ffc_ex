@@ -556,11 +556,13 @@ defmodule FfcEx.Game do
 
       game =
         if match?({:wildcard_draw4, _}, card) do
-          %Game{
-            game
-            | was_valid_wild4:
-                {player_id, !Enum.any?(new_hand, &Card.can_play_on?(game.current_card, &1))}
-          }
+          # except other wild draw 4s!
+          can_play_other_cards =
+            new_hand
+            |> Enum.reject(&Card.equal_nw?(&1, {:wildcard_draw4, nil}))
+            |> Enum.any?(&Card.can_play_on?(game.current_card, &1))
+
+          %Game{game | was_valid_wild4: {player_id, !can_play_other_cards}}
         else
           %Game{game | was_valid_wild4: nil}
         end
@@ -644,7 +646,7 @@ defmodule FfcEx.Game do
     else
       game |> force_draw(challenged_player, 4)
     end
-    |> then(&%Game{&1 | was_valid_wild4: nil})
+    |> Map.put(:was_valid_wild4, nil)
     |> do_turn()
   end
 
