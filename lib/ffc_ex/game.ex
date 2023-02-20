@@ -176,6 +176,10 @@ defmodule FfcEx.Game do
         tell(user_id, "You can't `draw` twice! You must play the card you've drawn!")
         {:noreply, game}
 
+      game.called_ffc == {user_id, true} ->
+        tell(user_id, "You can't draw a card after you've called FFC!")
+        {:noreply, game}
+
       game.was_valid_wild4 != nil ->
         game =
           %Game{game | was_valid_wild4: nil}
@@ -194,7 +198,8 @@ defmodule FfcEx.Game do
 
         {:noreply, game}
 
-      game.cml_draw == nil and game.drawn_card == nil and game.was_valid_wild4 == nil ->
+      game.cml_draw == nil and game.drawn_card == nil and game.was_valid_wild4 == nil and
+          game.called_ffc == nil ->
         {:noreply, do_draw_self(game, user_id)}
     end
   end
@@ -292,16 +297,19 @@ defmodule FfcEx.Game do
 
   @impl true
   def handle_cast({user_id, :ffc}, game) do
+    hand = game.hands[user_id]
+    can_play_a_card = Enum.any?(hand, &Card.can_play_on?(game.current_card, &1))
+
     cond do
       current_player(game) != user_id ->
         tell(user_id, "You can't do this!")
         {:noreply, game}
 
-      length(game.hands[user_id]) != 2 ->
+      length(hand) != 2 or not can_play_a_card ->
         tell(user_id, "You can't call FFC right now!")
         {:noreply, game}
 
-      length(game.hands[user_id]) == 2 ->
+      length(hand) == 2 and can_play_a_card ->
         broadcast(game,
           embeds: [
             %Embed{
@@ -511,14 +519,12 @@ defmodule FfcEx.Game do
         tell(player_id, "This card can't be played! Cards that can be played are **__bold__**.")
         game
 
-      Card.can_play_on?(game.current_card, card) and game.cml_draw == nil ->
-        play_card_do_turn(game, card, player_id)
-
       game.cml_draw != nil and card_type != :draw2 ->
         tell(player_id, "You must play a Draw 2 card or `draw` the cards.")
         game
 
-      game.cml_draw != nil and card_type == :draw2 ->
+      (Card.can_play_on?(game.current_card, card) and game.cml_draw == nil) or
+          (game.cml_draw != nil and card_type == :draw2) ->
         play_card_do_turn(game, card, player_id)
     end
   end
@@ -555,7 +561,7 @@ defmodule FfcEx.Game do
       card_special_message(game, card)
 
       game =
-        if match?({:wildcard_draw4, _}, card) do
+        with {:wildcard_draw4, _} <- card do
           # except other wild draw 4s!
           can_play_other_cards =
             new_hand
@@ -564,7 +570,7 @@ defmodule FfcEx.Game do
 
           %Game{game | was_valid_wild4: {player_id, !can_play_other_cards}}
         else
-          %Game{game | was_valid_wild4: nil}
+          _ -> %Game{game | was_valid_wild4: nil}
         end
 
       new_hands = Map.put(game.hands, player_id, new_hand)
@@ -826,7 +832,7 @@ defmodule FfcEx.Game do
   end
 
   defp current_player(game) do
-    List.first(game.players)
+    hd(game.players)
   end
 
   defp advance_player(game) do
