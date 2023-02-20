@@ -457,14 +457,29 @@ defmodule FfcEx.Game do
   defp cml_draw_turn(game) do
     current_player = current_player(game)
 
+    draw2_cards =
+      game.hands[current_player]
+      |> Enum.filter(fn {_, el} -> el == :draw2 end)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.map_join(", ", &"`play #{Card.to_string(&1)}`")
+
     tell(current_player,
       embeds: [
         %Embed{
           title: "Your turn!",
-          description: """
-          This turn, you must play a Draw 2 card with `play` or draw the #{game.cml_draw} \
-          accumulated cards with `draw`
-          """
+          description:
+            if draw2_cards == "" do
+              """
+              Because you have no Draw 2 cards, you have to draw the #{game.cml_draw} \
+              accumulated cards with `draw`.
+              """
+            else
+              """
+              This turn, you must play a Draw 2 card with #{draw2_cards} or draw the \
+              #{game.cml_draw} accumulated cards with `draw`
+              """
+            end
         }
         |> put_cond_fields(game)
         |> put_id_footer(game)
