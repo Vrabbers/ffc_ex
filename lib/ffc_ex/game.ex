@@ -198,8 +198,7 @@ defmodule FfcEx.Game do
 
         {:noreply, game}
 
-      game.cml_draw == nil and game.drawn_card == nil and game.was_valid_wild4 == nil and
-          game.called_ffc == nil ->
+      game.cml_draw == nil and game.drawn_card == nil and game.was_valid_wild4 == nil ->
         {:noreply, do_draw_self(game, user_id)}
     end
   end
