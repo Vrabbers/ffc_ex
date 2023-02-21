@@ -2,7 +2,7 @@ defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
   alias FfcEx.{Game, GameCmdParser, GameLobbies, GameRegistry, PlayerRouter}
-  alias Nostrum.{Api, Struct.Embed, Struct.User, Util}
+  alias Nostrum.{Api, Struct.Embed, Struct.User, Struct.Message, Util}
 
   require Logger
 
@@ -11,7 +11,7 @@ defmodule FfcEx.BaseConsumer do
   end
 
   @impl true
-  def handle_event({:MESSAGE_CREATE, msg, _ws_state}) do
+  def handle_event({:MESSAGE_CREATE, %Message{author: %User{bot: nil}} = msg, _ws_state}) do
     prefix = Application.fetch_env!(:ffc_ex, :prefix)
 
     case msg.guild_id do
@@ -35,6 +35,7 @@ defmodule FfcEx.BaseConsumer do
           if int != nil do
             PlayerRouter.set_for(msg.author.id, int)
           end
+
           if res and match?({:chat, _}, cmd) do
             Api.create_reaction!(msg.channel_id, msg.id, "✅")
           end
@@ -78,7 +79,7 @@ defmodule FfcEx.BaseConsumer do
       [**Click here to view game instructions.**](https://vrabbers.github.io/ffc_ex/index.html)
       """,
       color: Application.fetch_env!(:ffc_ex, :color),
-      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!())}
+      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
     }
 
     Api.create_message!(msg.channel_id, embeds: [embed])
@@ -120,7 +121,7 @@ defmodule FfcEx.BaseConsumer do
       """,
       timestamp: DateTime.to_iso8601(DateTime.utc_now()),
       color: Application.fetch_env!(:ffc_ex, :color),
-      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!())}
+      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
     }
 
     Api.edit_message(message, content: "", embed: embed)
@@ -134,7 +135,8 @@ defmodule FfcEx.BaseConsumer do
   end
 
   defp join(msg, args) do
-    house_rules = args |> Enum.map(&house_rules/1) |> Enum.filter(& &1 != nil) |> Enum.uniq()
+    house_rules = args |> Enum.map(&house_rules/1) |> Enum.filter(&(&1 != nil)) |> Enum.uniq()
+
     case GameLobbies.join(msg.channel_id, msg.author.id, house_rules) do
       {:new, id, timeout} ->
         prefix = Application.fetch_env!(:ffc_ex, :prefix)

@@ -5,7 +5,7 @@ config :logger,
 
 config :ffc_ex,
   prefix: if(Mix.env() == :prod, do: "ffc:", else: "ffd:"),
-  color: if(Mix.env() == :prod, do: 0x4251F5, else: 0xFFFFFF)
+  color: if(Mix.env() == :prod, do: 0xFF3F3F, else: 0x4251F5)
 
 config :nostrum,
   gateway_intents: [
