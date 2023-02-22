@@ -1,6 +1,7 @@
 defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
+  alias FfcEx.Interactions
   alias FfcEx.{Game, GameCmdParser, GameLobbies, GameRegistry, PlayerRouter}
   alias Nostrum.{Api, Struct.Embed, Struct.Event, Struct.User, Struct.Message, Util}
 
@@ -11,61 +12,42 @@ defmodule FfcEx.BaseConsumer do
   end
 
   @impl true
-  def handle_event({:READY, %Event.Ready{v: gateway_version}, _ws_state}) do
-    Logger.info("Ready on gateway v#{gateway_version}!")
-    debug_guild = Application.fetch_env!(:ffc_ex, :debug_guild)
-
-    if debug_guild != nil do
-      {:ok, _} =
-        Api.create_guild_application_command(debug_guild, %{name: "hi", description: "hello"})
-      else
-        Logger.warn("did not register application commands")
-    end
-  end
-
-  @impl true
-  def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
-    Api.create_interaction_response!(interaction, %{type: 4, data: %{content: "hiya!"}})
+  def handle_event({:READY, %Event.Ready{v: v}, _ws_state}) do
+    Logger.info("#{__MODULE__} ready on gateway v#{v}.")
+    Interactions.prepare_app_commands()
     :noop
   end
 
   @impl true
-  def handle_event({:MESSAGE_CREATE, %Message{author: %User{bot: nil}} = msg, _ws_state}) do
-    prefix = Application.fetch_env!(:ffc_ex, :prefix)
+  def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
+    :ok = Interactions.handle(interaction)
+  end
 
-    case msg.guild_id do
-      nil ->
-        # Handle DM message
-        {int, cmd} = GameCmdParser.parse(msg.content)
+  @impl true
+  def handle_event({:MESSAGE_CREATE, %Message{author: %User{bot: nil}, guild_id: nil} = msg, _}) do
+    # Handle DM message
+    {int, cmd} = GameCmdParser.parse(msg.content)
 
-        game =
-          case int do
-            nil ->
-              id = PlayerRouter.lookup(msg.author.id)
-              GameRegistry.get_game(id)
+    game =
+      case int do
+        nil ->
+          id = PlayerRouter.lookup(msg.author.id)
+          GameRegistry.get_game(id)
 
-            x ->
-              GameRegistry.get_game(x)
-          end
+        x ->
+          GameRegistry.get_game(x)
+      end
 
-        if game != nil and Game.part_of?(game, msg.author.id) do
-          res = Game.do_cmd(game, msg.author.id, cmd)
+    if game != nil and Game.part_of?(game, msg.author.id) do
+      res = Game.do_cmd(game, msg.author.id, cmd)
 
-          if int != nil do
-            PlayerRouter.set_for(msg.author.id, int)
-          end
+      if int != nil do
+        PlayerRouter.set_for(msg.author.id, int)
+      end
 
-          if res and match?({:chat, _}, cmd) do
-            Api.create_reaction!(msg.channel_id, msg.id, "✅")
-          end
-        end
-
-      _ ->
-        # Handle guild message
-        if String.starts_with?(msg.content, prefix) do
-          command = String.slice(msg.content, String.length(prefix)..-1//1)
-          handle_guild_commands(command, msg)
-        end
+      if res and match?({:chat, _}, cmd) do
+        Api.create_reaction!(msg.channel_id, msg.id, "✅")
+      end
     end
   end
 

@@ -10,7 +10,8 @@ defmodule FfcEx.Application do
       FfcEx.GameRegistrySupervisor,
       FfcEx.GameLobbies,
       FfcEx.DmCache,
-      FfcEx.BaseConsumer
+      FfcEx.Interactions,
+      FfcEx.BaseConsumer,
     ]
 
     opts = [strategy: :one_for_one, name: FfcEx.Supervisor]
