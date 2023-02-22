@@ -6,7 +6,8 @@
     <title>FFCex</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Mono&family=Fira+Sans:wght@200;400;500&display=swap"
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fira+Mono&family=Fira+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -14,10 +15,10 @@
 <body>
     <div id="main">
         <div id="pagehead">
-            <span>FFCex</span>
+            <span>FFC Manual</span>
         </div>
         <div id="page">
-            Welcome to Final Fantastic Card!
+            <i>Welcome to Final Fantastic Card!</i>
             <h2 id="gameplay">Gameplay</h2>
             <p>
                 At the beginning of the game, each player starts with 7 cards. The aim of the game is to clear all your
@@ -60,9 +61,9 @@
             </p>
             <p>
                 Otherwise, when the first character is <code>+</code>, the second character indicates whether the card
-                is a normal wildcard (<code>+W</code>), or a <b>draw 4 wildcard</b> (<code>+4</code>). Additionally, if
-                you choose to play this card, you must specify a color with the respective color character, such as
-                <code>+4R</code> or <code>+WY</code>
+                is a normal wildcard (<code>+W</code>), or a <b>Wild Draw 4</b> (<code>+4</code>). Additionally, if
+                you choose to play one of these cards, you must specify a color with the respective color character,
+                such as <code>+4R</code> or <code>+WY</code>
             </p>
             <h3>Card effects</h3>
             <p>
@@ -70,13 +71,15 @@
                 cause the player next in the playing order (see <code>status</code>) to be skipped. <code>R</code>
                 (reverse) cause the direction of play to be reversed. In 2 player games, both <code>S</code> and
                 <code>R</code> cards have the same effect and repeat your turn. A <code>+</code> card makes the next
-                player draw 2 extra cards from the deck.
+                player draw 2 extra cards from the deck, <i>except when the <a href="#cml-draw">cumulative draw</a> 
+                house rule is enabled (see below)</i>.
             </p>
             <p>
                 Wildcards change the color of play. Indicate the color you want as explained above. Additionally,
-                <b>Wild draw four</b> cards (<code>+4c</code>) make the next player draw 4 extra cards. However, you may
+                <b>Wild Draw 4</b> cards (<code>+4</code>) make the next player draw 4 extra cards. However, you may
                 only play them if you have no other cards to play. The next player may challenge you on this decision.
-                If they lose, they have to draw 6 cards instead. If you lose, you must draw the 4 cards.
+                If challenged and you did play it legally, they have to draw 6 cards instead. However, if your play was
+                illegal, you must draw 4 cards.
             </p>
             <h2 id="commands">Commands</h2>
             <p>
@@ -92,12 +95,12 @@
                 <li><code>chat [msg]</code>: broadcasts a chat message to other players;</li>
                 <li><code>!</code>: challenges another player;</li>
                 <li><code>nudge</code>: reminds the current player it is their turn;</li>
-                <li><code>ffc</code>: call out FFC to indicate you only have 1 card left;</li>
+                <li><code>ffc</code>: call out <b>FFC</b> to indicate you only have 1 card left;</li>
                 <li><code>drop</code>: leave the room. If spectating, stop spectating;</li>
                 <li><code>spectate</code>: leave the game and start spectating.</li>
             </ul>
             <p>
-                An unrecognised command will be sent as a chat message directly.
+                <i>An unrecognised command will be sent as a chat message directly.</i>
             </p>
             <h2 id="house-rules">House rules</h2>
             <p>
@@ -106,8 +109,8 @@
             </p>
 
             <ul>
-                <li><code>c</code>: cumulative draw, where consecutive plays of Draw 2 cards accumulate cards until
-                    someone cannot play a Draw 2 card. Then, that player draws all accumulated cards.</li>
+                <li id="cml-draw"><code>c</code>: cumulative draw, where consecutive plays of Draw 2 cards accumulate 
+                    cards until someone cannot play a Draw 2 card. Then, that player draws all accumulated cards.</li>
             </ul>
         </div>
         <div id="footer">

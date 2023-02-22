@@ -4,7 +4,7 @@ body {
 :root {
     --white: #f7f7f7;
     --black: #100303;
-    --color: #636ccf;
+    --color: #FF3F3F;
 }
 
 a { 
@@ -45,7 +45,7 @@ body {
     width: 50em;
     min-width: min-content;
     max-width: 100%;
-    text-align: justify;
+    text-align: start;
     box-shadow: 0 0 0.5em var(--color);
     display: flex;
     flex-direction: column;
@@ -62,7 +62,8 @@ body {
     padding: 0.4em;
     box-shadow: 0 0 0.5em var(--color);
     flex-grow: 0;
-    font-weight: 200;
+    font-weight: 300;
+    letter-spacing: -3px;
 }
 
 #pagehead span {
