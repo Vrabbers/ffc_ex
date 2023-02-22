@@ -2,12 +2,31 @@ defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
   alias FfcEx.{Game, GameCmdParser, GameLobbies, GameRegistry, PlayerRouter}
-  alias Nostrum.{Api, Struct.Embed, Struct.User, Struct.Message, Util}
+  alias Nostrum.{Api, Struct.Embed, Struct.Event, Struct.User, Struct.Message, Util}
 
   require Logger
 
   def start_link() do
     Consumer.start_link(__MODULE__, name: __MODULE__)
+  end
+
+  @impl true
+  def handle_event({:READY, %Event.Ready{v: gateway_version}, _ws_state}) do
+    Logger.info("Ready on gateway v#{gateway_version}!")
+    debug_guild = Application.fetch_env!(:ffc_ex, :debug_guild)
+
+    if debug_guild != nil do
+      {:ok, _} =
+        Api.create_guild_application_command(debug_guild, %{name: "hi", description: "hello"})
+      else
+        Logger.warn("did not register application commands")
+    end
+  end
+
+  @impl true
+  def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
+    Api.create_interaction_response!(interaction, %{type: 4, data: %{content: "hiya!"}})
+    :noop
   end
 
   @impl true
