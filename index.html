@@ -22,7 +22,7 @@
             <h2 id="gameplay">Gameplay</h2>
             <p>
                 At the beginning of the game, each player starts with 7 cards. The aim of the game is to clear all your
-                cards before every other player.
+                cards before every other player. The first player to do so wins!
             </p>
             <p>
                 To view your hand, use the <code>hand</code> command.
@@ -32,7 +32,12 @@
                 To play a card, use the <code>play</code> command.
             </p>
             <p>
-                More commands can be found in the <a href="#commands">Commands</a> section below.
+                Before playing your very last card, you must call out <b>FFC</b> using the <code>ffc</code> command,
+                even if it is a card you've just drawn. If you forget, the next player can challenge you and make you
+                draw <b>2</b> extra cards.
+            </p>
+            <p>
+                <i>More commands can be found in the <a href="#commands">Commands</a> section below.</i>
             </p>
 
             <h2 id="cards">Cards</h2>
@@ -45,8 +50,15 @@
                 <li>Wildcards.</li>
             </ul>
             <p>
-                If you cannot play any of these cards from your hand, you must draw from the deck using the
-                <code>draw</code> command.
+                If you cannot play any of the cards you have, you must draw from the deck using the <code>draw</code> 
+                command. If the card you draw can be played, use <code>play</code>. If you can't or don't want to play
+                it, use <code>pass</code> to pass your turn.
+            </p>
+            <p>
+                <i>
+                    Note: it is possible to draw even when you already have playable cards. However, you must play the
+                    card you draw. If you cannot play it, you are required to skip your turn.
+                </i>
             </p>
             <h3>Card format</h3>
             <p>
@@ -104,13 +116,12 @@
             </p>
             <h2 id="house-rules">House rules</h2>
             <p>
-                In the initial <code>ffc:join</code> command, you may add letters to specify house rules, such as
-                <code>ffc:join c</code>:
+                You may add certain letters in the first <code>ffc:join</code> command (i.e. <code>ffc:join c</code>) to
+                enable certain house rules for a game. The house rules are as follows:
             </p>
-
             <ul>
                 <li id="cml-draw"><code>c</code>: cumulative draw, where consecutive plays of Draw 2 cards accumulate 
-                    cards until someone cannot play a Draw 2 card. Then, that player draws all accumulated cards.</li>
+                    cards until someone cannot play a Draw 2 card. Then, that player must draw all accumulated cards.</li>
             </ul>
         </div>
         <div id="footer">
