@@ -112,7 +112,7 @@ defmodule FfcEx.Game do
           title: "Final Fantastic Card",
           description: """
           Welcome to Final Fantastic Card!
-
+ 
           [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)
           """,
           thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}

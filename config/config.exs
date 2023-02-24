@@ -1,7 +1,7 @@
 import Config
 
 config :logger,
-  level: :debug
+  level: if(Mix.env() == :prod, do: :info, else: :debug)
 
 config :ffc_ex,
   prefix: if(Mix.env() == :prod, do: "ffc:", else: "ffd:"),

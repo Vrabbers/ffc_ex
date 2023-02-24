@@ -120,7 +120,7 @@ defmodule FfcEx.GameLobbies do
       {channel, lobby} ->
         {^lobby, new_lobbies} = Map.pop(lobbies, channel)
 
-        Task.start(fn ->
+        Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
           Api.create_message(channel, "Lobby \##{lobby.id} timed out and has been disbanded.")
         end)
 

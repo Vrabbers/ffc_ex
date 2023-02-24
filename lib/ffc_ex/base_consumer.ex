@@ -20,7 +20,8 @@ defmodule FfcEx.BaseConsumer do
 
   @impl true
   def handle_event({:INTERACTION_CREATE, interaction, _ws_state}) do
-    :ok = Interactions.handle(interaction)
+    {:ok, fun} = Interactions.handle(interaction)
+    fun.()
   end
 
   @impl true
@@ -58,104 +59,20 @@ defmodule FfcEx.BaseConsumer do
 
   defp handle_guild_commands(command, msg) do
     case command do
-      "ping" -> ping(msg)
       "join" -> join(msg, [])
       "join " <> args -> join(msg, args |> String.trim() |> String.to_charlist())
       "spectate" -> spectate(msg)
       "close" -> close(msg)
-      "help" -> help(msg)
       _ -> :ignore
     end
   end
 
-  defp help(msg) do
-    embed = %Embed{
-      title: "ℹ️ FFCex Help",
-      description: """
-      `ffc:ping` - checks if bot is online and shows general info.
-      `ffc:help` - gets this message.
-      `ffc:join` - starts a new game lobby or joins an existing one.
-      `ffc:spectate` - spectates a game lobby.
-      `ffc:close` - closes the game lobby and starts the game.
-      [**Click here to view game instructions.**](https://vrabbers.github.io/ffc_ex/index.html)
-      """,
-      color: Application.fetch_env!(:ffc_ex, :color),
-      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
-    }
-
-    Api.create_message!(msg.channel_id, embeds: [embed])
-  end
-
-  defp os_str() do
-    type =
-      case :os.type() do
-        {:win32, _} -> "Windows"
-        {:unix, os_type} -> os_type |> Atom.to_string() |> String.capitalize()
-      end
-
-    version =
-      case :os.version() do
-        {major, minor, release} -> "#{major}.#{minor}.#{release}"
-        str -> str
-      end
-
-    "#{type} v#{version}"
-  end
-
-  defp ping(msg) do
-    prev = System.monotonic_time(:millisecond)
-    message = Api.create_message!(msg.channel_id, "Pinging 📶...")
-    api_latency = System.monotonic_time(:millisecond) - prev
-
-    latencies = Util.get_all_shard_latencies() |> Map.values()
-    heartbeat = Enum.sum(latencies) / length(latencies)
-
-    embed = %Embed{
-      title: "FFCex v#{Keyword.fetch!(Application.spec(:ffc_ex), :vsn)}",
-      description: """
-      **Heartbeat:** #{heartbeat}ms
-      **API latency:** #{api_latency}ms
-      **Erlang/OTP release:** #{System.otp_release()}
-      **Elixir version:** #{System.version()}
-      **Memory usage:** #{(:erlang.memory(:total) / 1_000_000) |> :erlang.float_to_binary(decimals: 2)}MB
-      **Operating system:** #{os_str()}
-      """,
-      timestamp: DateTime.to_iso8601(DateTime.utc_now()),
-      color: Application.fetch_env!(:ffc_ex, :color),
-      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
-    }
-
-    Api.edit_message(message, content: "", embed: embed)
-  end
-
-  defp house_rules(char) do
-    case char do
-      ?c -> :cumulative_draw
-      _ -> nil
-    end
-  end
-
   defp join(msg, args) do
-    house_rules = args |> Enum.map(&house_rules/1) |> Enum.filter(&(&1 != nil)) |> Enum.uniq()
+    house_rules = []
 
     case GameLobbies.join(msg.channel_id, msg.author.id, house_rules) do
       {:new, id, timeout} ->
         prefix = Application.fetch_env!(:ffc_ex, :prefix)
-
-        embed = %Embed{
-          title: "Final Fantastic Card",
-          description: """
-          <@#{msg.author.id}> has started game \##{id}!
-          - To join, type `#{prefix}join`;
-          - To spectate the game, type `#{prefix}spectate`;
-          - Once everyone's in, <@#{msg.author.id}> can use `#{prefix}close` to close the lobby and start the game!
-          *The lobby will timeout <t:#{DateTime.to_unix(timeout)}:R>.*
-          """,
-          timestamp: DateTime.to_iso8601(DateTime.utc_now()),
-          color: Application.fetch_env!(:ffc_ex, :color)
-        }
-
-        Api.create_message!(msg.channel_id, embeds: [embed])
 
       {:joined, id} ->
         Api.create_message!(
