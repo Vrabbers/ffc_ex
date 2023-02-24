@@ -45,7 +45,7 @@ defmodule FfcEx.Interactions do
   @spec prepare_app_commands() :: :ok
   def prepare_app_commands(), do: GenServer.call(__MODULE__, :prepare_app_commands)
 
-  @spec handle(Interaction.t()) :: {:ok, fun()} | {:error, term()}
+  @spec handle(Interaction.t()) :: :ok | {:error, term()}
   def handle(interaction), do: GenServer.call(__MODULE__, {:handle, interaction})
 
   @impl true
@@ -112,7 +112,7 @@ defmodule FfcEx.Interactions do
   @slash_command {:create,
                   %{
                     name: "create",
-                    description: "Creates and new game lobby.",
+                    description: "Create a new FFC game lobby.",
                     options: [
                       %{
                         name: "house_rules",
@@ -142,7 +142,9 @@ defmodule FfcEx.Interactions do
         Enum.map_join(house_rules, ", ", &Atom.to_string/1)
       end
 
-    {:new, id, timeout} = GameLobbies.join(interaction.id, interaction.user.id, house_rules)
+    {:new, id, timeout} =
+      GameLobbies.create(interaction.id, interaction.token, interaction.user.id, house_rules)
+
     embed = %Embed{
       title: "Final Fantastic Card",
       description: """
@@ -153,7 +155,6 @@ defmodule FfcEx.Interactions do
       timestamp: DateTime.to_iso8601(DateTime.utc_now()),
       color: Application.fetch_env!(:ffc_ex, :color),
       thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
-
     }
 
     Api.create_interaction_response!(interaction, %{
@@ -165,9 +166,118 @@ defmodule FfcEx.Interactions do
           |> Components.put_button(id: "join", label: "Join \##{id}", style: :primary)
           |> Components.put_button(id: "spectate", label: "Spectate \##{id}", style: :secondary)
           |> Components.put_button(id: "leave", label: "Leave \##{id}", style: :danger)
-          |> Components.put_button(id: "start", label: "Start \##{id}", style: :success)
+          |> Components.put_button(id: "start", label: "Close and start \##{id}", style: :success)
       }
     })
+  end
+
+  defp handle_component("join", orig_int, interaction) do
+    result = GameLobbies.join(orig_int.id, interaction.user.id)
+
+    {msg, flags} =
+      case result do
+        :timeout ->
+          {"Lobby no longer exists: it may have closed or timed out.", message_flags(:ephemeral)}
+
+        {:joined, id} ->
+          {"#{interaction.user.username} joined game \##{id}!", 0}
+
+        {:already_joined, id} ->
+          {"You have already joined \##{id}.", message_flags(:ephemeral)}
+      end
+
+    Api.create_interaction_response!(interaction, %{
+      type: interaction_callback_type(:channel_message_with_source),
+      data: %{content: msg, flags: flags}
+    })
+  end
+
+  defp handle_component("spectate", orig_int, interaction) do
+    result = GameLobbies.spectate(orig_int.id, interaction.user.id)
+
+    {msg, flags} =
+      case result do
+        :timeout ->
+          {"Lobby no longer exists: it may have closed or timed out.", message_flags(:ephemeral)}
+
+        :cannot_spectate ->
+          {"As you created this game, you cannot spectate this game.", message_flags(:ephemeral)}
+
+        {:spectating, id} ->
+          {"#{interaction.user.username} is spectating game \##{id}!", 0}
+
+        :already_spectating ->
+          {"You are already spectating this game.", message_flags(:ephemeral)}
+      end
+
+    Api.create_interaction_response!(interaction, %{
+      type: interaction_callback_type(:channel_message_with_source),
+      data: %{content: msg, flags: flags}
+    })
+  end
+
+  defp handle_component("leave", orig_int, interaction) do
+    result = GameLobbies.leave(orig_int.id, interaction.user.id)
+
+    {msg, flags} =
+      case result do
+        :timeout ->
+          {"Lobby no longer exists: it may have closed or timed out.", message_flags(:ephemeral)}
+
+        :cannot_leave ->
+          {"As you created this game, you cannot leave this game.", message_flags(:ephemeral)}
+
+        {:left, id} ->
+          {"#{interaction.user.username} left game \##{id}!", 0}
+
+        :not_in_game ->
+          {"You are not in this game.", message_flags(:ephemeral)}
+      end
+
+    Api.create_interaction_response!(interaction, %{
+      type: interaction_callback_type(:channel_message_with_source),
+      data: %{content: msg, flags: flags}
+    })
+  end
+
+  defp handle_component("start", orig_int, interaction) do
+    result = GameLobbies.start_game(orig_int.id, interaction.user.id)
+
+    {msg, flags} =
+      case result do
+        :timeout ->
+          {"Lobby no longer exists: it may have closed or timed out.", message_flags(:ephemeral)}
+
+        :cannot_start ->
+          {"Only the person who created the game can start it.", message_flags(:ephemeral)}
+
+        {:started, lobby, game} ->
+          Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn -> start_game(interaction, lobby, game) end)
+          {"Starting game...", message_flags(:ephemeral)}
+
+        :player_count_invalid ->
+          {"The game was not able to start because the amount of players was invalid.", 0}
+      end
+
+    Api.create_interaction_response!(interaction, %{
+      type: interaction_callback_type(:channel_message_with_source),
+      data: %{content: msg, flags: flags}
+    })
+  end
+
+  defp start_game(int, lobby, game) do
+    msg = case FfcEx.Game.start_game(game) do
+      :ok ->
+        "**Lobby \##{lobby.id}** was closed and the game is starting."
+
+      {:cannot_dm, users} ->
+        """
+         Game \##{lobby.id} could not start as I have not been able to DM these players:
+         #{users |> Enum.map_join(" ", &"<@#{&1}>")}
+         Please change settings so I can send these people direct messages.
+         """
+    end
+    Api.create_message!(int.message.channel_id, msg)
   end
 
   defp house_rules(char) do
@@ -179,20 +289,37 @@ defmodule FfcEx.Interactions do
 
   @impl true
   # Handles slash commands
-  def handle_call({:handle, %Interaction{type: 2} = interaction}, _from, cmds) do
+  def handle_call({:handle, %Interaction{type: 2} = interaction}, from, cmds) do
     fun = cmds[interaction.data.id]
 
     if fun != nil do
-      {:reply, {:ok, fn -> apply(__MODULE__, fun, [interaction]) end}, cmds}
+      Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
+        apply(__MODULE__, fun, [interaction])
+        GenServer.reply(from, :ok)
+      end)
+
+      {:noreply, cmds}
     else
       {:reply, {:error, :not_found}, cmds}
     end
   end
 
+  # Component responses
+  def handle_call({:handle, %Interaction{type: 3} = interaction}, from, cmds) do
+    custom_id = interaction.data.custom_id
+    orig_interaction = interaction.message.interaction
+
+    Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
+      handle_component(custom_id, orig_interaction, interaction)
+      GenServer.reply(from, :ok)
+    end)
+
+    {:noreply, cmds}
+  end
+
   @impl true
-  def handle_call({:handle, interaction}, _from, cmds) do
-    IO.inspect(interaction)
-    {:reply, {:ok, fn -> nil end}, cmds}
+  def handle_call({:handle, _interaction}, _from, cmds) do
+    {:reply, {:error, :not_found}, cmds}
   end
 
   @impl true
@@ -219,6 +346,7 @@ defmodule FfcEx.Interactions do
 
   defp prepare_guild_app_cmds(dbg_gld_str) do
     {debug_guild, ""} = Integer.parse(String.trim(dbg_gld_str))
+    Api.bulk_overwrite_global_application_commands([])
     Api.bulk_overwrite_guild_application_commands(debug_guild, Map.values(slash_commands()))
   end
 

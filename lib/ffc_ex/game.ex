@@ -112,7 +112,7 @@ defmodule FfcEx.Game do
           title: "Final Fantastic Card",
           description: """
           Welcome to Final Fantastic Card!
- 
+
           [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)
           """,
           thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
@@ -365,6 +365,7 @@ defmodule FfcEx.Game do
         |> put_id_footer(game)
       ]
     )
+    {:noreply, game}
   end
 
   @impl true
@@ -388,7 +389,7 @@ defmodule FfcEx.Game do
         game,
         """
         🔴 Unfortunately, game \##{game.id} closed due to an error. \
-        Use `ffc:join` in the original channel to start a new game.
+        Use `/create` to start a new game.
         """
       )
     end
