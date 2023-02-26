@@ -10,6 +10,6 @@ defmodule FfcEx.Lobby do
           starting_user: User.id(),
           players: [User.id()],
           spectators: [User.id()],
-          house_rules: [atom()]
+          house_rules: [atom()],
         }
 end
