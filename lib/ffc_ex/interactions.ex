@@ -3,11 +3,7 @@ defmodule FfcEx.Interactions do
   use GenServer
 
   alias FfcEx.GameLobbies
-  alias Nostrum.Struct.User
-  alias Nostrum.Struct.Embed
-  alias Nostrum.Struct.Interaction
-  alias Nostrum.Util
-  alias Nostrum.Api
+  alias Nostrum.{Api, Struct.Embed, Struct.Interaction, Struct.User, Util}
 
   import FfcEx.Constants
   require Logger
@@ -36,21 +32,6 @@ defmodule FfcEx.Interactions do
 
       [Map.put(act_row, :components, comps)]
     end
-  end
-
-  def start_link([]) do
-    GenServer.start_link(__MODULE__, [], name: __MODULE__)
-  end
-
-  @spec prepare_app_commands() :: :ok
-  def prepare_app_commands(), do: GenServer.call(__MODULE__, :prepare_app_commands)
-
-  @spec handle(Interaction.t()) :: :ok | {:error, term()}
-  def handle(interaction), do: GenServer.call(__MODULE__, {:handle, interaction})
-
-  @impl true
-  def init([]) do
-    {:ok, %{}}
   end
 
   @slash_command {:ping,
@@ -180,7 +161,7 @@ defmodule FfcEx.Interactions do
           {"Lobby no longer exists: it may have closed or timed out.", message_flags(:ephemeral)}
 
         {:joined, id} ->
-          {"#{interaction.user.username} joined game \##{id}!", 0}
+          {"**#{uname_discrim(interaction.user)}** has joined game \##{id}!", 0}
 
         {:already_joined, id} ->
           {"You have already joined \##{id}.", message_flags(:ephemeral)}
@@ -204,7 +185,7 @@ defmodule FfcEx.Interactions do
           {"As you created this game, you cannot spectate this game.", message_flags(:ephemeral)}
 
         {:spectating, id} ->
-          {"#{interaction.user.username} is spectating game \##{id}!", 0}
+          {"**#{uname_discrim(interaction.user)}** is spectating game \##{id}!", 0}
 
         :already_spectating ->
           {"You are already spectating this game.", message_flags(:ephemeral)}
@@ -228,7 +209,7 @@ defmodule FfcEx.Interactions do
           {"As you created this game, you cannot leave this game.", message_flags(:ephemeral)}
 
         {:left, id} ->
-          {"#{interaction.user.username} left game \##{id}!", 0}
+          {"**#{uname_discrim(interaction.user)}** has left game \##{id}.", 0}
 
         :not_in_game ->
           {"You are not in this game.", message_flags(:ephemeral)}
@@ -252,8 +233,7 @@ defmodule FfcEx.Interactions do
           {"Only the person who created the game can start it.", message_flags(:ephemeral)}
 
         {:started, lobby, game} ->
-          Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn -> start_game(interaction, lobby, game) end)
-          {"Starting game...", message_flags(:ephemeral)}
+          {start_game(lobby, game), 0}
 
         :player_count_invalid ->
           {"The game was not able to start because the amount of players was invalid.", 0}
@@ -265,19 +245,107 @@ defmodule FfcEx.Interactions do
     })
   end
 
-  defp start_game(int, lobby, game) do
-    msg = case FfcEx.Game.start_game(game) do
+  def start_link([]) do
+    GenServer.start_link(__MODULE__, [], name: __MODULE__)
+  end
+
+  @spec prepare_app_commands() :: :ok
+  def prepare_app_commands(), do: GenServer.call(__MODULE__, :prepare_app_commands)
+
+  @spec handle(Interaction.t()) :: :ok | {:error, term()}
+  def handle(interaction) do
+    case GenServer.call(__MODULE__, {:handle, interaction}) do
+      {:slash_command, fun} ->
+        apply(__MODULE__, fun, [interaction])
+        :ok
+
+      {:handle_component, custom_id} ->
+        handle_component(custom_id, interaction.message.interaction, interaction)
+        :ok
+
+      {:error, t} ->
+        {:error, t}
+    end
+  end
+
+  @impl true
+  def init([]) do
+    Process.flag(:trap_exit, true)
+    {:ok, %{}}
+  end
+
+  @impl true
+  # Handles slash commands
+  def handle_call({:handle, %Interaction{type: 2} = interaction}, _from, cmds) do
+    fun = cmds[interaction.data.id]
+
+    if fun != nil do
+      {:reply, {:slash_command, fun}, cmds}
+    else
+      {:reply, {:error, :not_found}, cmds}
+    end
+  end
+
+  # Component responses
+  def handle_call({:handle, %Interaction{type: 3} = interaction}, _from, cmds) do
+    custom_id = interaction.data.custom_id
+    {:reply, {:handle_component, custom_id}, cmds}
+  end
+
+  @impl true
+  def handle_call({:handle, _interaction}, _from, cmds) do
+    {:reply, {:error, :unknown_interaction}, cmds}
+  end
+
+  @impl true
+  def handle_call(:prepare_app_commands, _from, _state) do
+    {:ok, cmds_list} =
+      case global_or_guild_cmds() do
+        :global -> prepare_global_app_cmds()
+        {:guild, guild} -> prepare_guild_app_cmds(guild)
+      end
+
+    cmds =
+      for %{name: name, id: id} <- cmds_list, into: %{} do
+        {String.to_integer(id), String.to_existing_atom(name)}
+      end
+
+    {:reply, :ok, cmds}
+  end
+
+  @impl true
+  def terminate(reason, _state) do
+    if reason == :shutdown or match?({:shutdown, _r}, reason) do
+      case global_or_guild_cmds() do
+        :global ->
+          :noop
+
+        {:guild, guild} ->
+          Logger.info("Deregistering interactions for guild #{guild}...")
+          {:ok, _} = Api.bulk_overwrite_guild_application_commands(guild, [])
+      end
+    end
+  end
+
+  @slash_commands Map.new(@slash_command)
+  defp slash_commands(), do: @slash_commands
+
+  defp uname_discrim(user) do
+    "#{user.username}\##{user.discriminator}"
+  end
+
+  defp start_game(lobby, game) do
+    case FfcEx.Game.start_game(game) do
       :ok ->
         "**Lobby \##{lobby.id}** was closed and the game is starting."
 
       {:cannot_dm, users} ->
         """
-         Game \##{lobby.id} could not start as I have not been able to DM these players:
-         #{users |> Enum.map_join(" ", &"<@#{&1}>")}
-         Please change settings so I can send these people direct messages.
-         """
+        Game \##{lobby.id} could not start as I have not been able to DM these players:
+        #{users |> Enum.map_join(" ", &"<@#{&1}>")}
+        Please change your privacy settings so I can send you people direct messages.
+        """
     end
-    Api.create_message!(int.message.channel_id, msg)
   end
 
   defp house_rules(char) do
@@ -287,70 +355,23 @@ defmodule FfcEx.Interactions do
     end
   end
 
-  @impl true
-  # Handles slash commands
-  def handle_call({:handle, %Interaction{type: 2} = interaction}, from, cmds) do
-    fun = cmds[interaction.data.id]
+  defp global_or_guild_cmds() do
+    dbg_guild = Application.fetch_env!(:ffc_ex, :debug_guild)
 
-    if fun != nil do
-      Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
-        apply(__MODULE__, fun, [interaction])
-        GenServer.reply(from, :ok)
-      end)
-
-      {:noreply, cmds}
-    else
-      {:reply, {:error, :not_found}, cmds}
+    case dbg_guild do
+      nil -> :global
+      x -> {:guild, x |> String.trim() |> String.to_integer()}
     end
   end
 
-  # Component responses
-  def handle_call({:handle, %Interaction{type: 3} = interaction}, from, cmds) do
-    custom_id = interaction.data.custom_id
-    orig_interaction = interaction.message.interaction
-
-    Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
-      handle_component(custom_id, orig_interaction, interaction)
-      GenServer.reply(from, :ok)
-    end)
-
-    {:noreply, cmds}
-  end
-
-  @impl true
-  def handle_call({:handle, _interaction}, _from, cmds) do
-    {:reply, {:error, :not_found}, cmds}
-  end
-
-  @impl true
-  def handle_call(:prepare_app_commands, _from, _state) do
-    dbg_guild = Application.fetch_env!(:ffc_ex, :debug_guild)
-
-    {:ok, cmds_list} =
-      case dbg_guild do
-        nil -> prepare_global_app_cmds()
-        _ -> prepare_guild_app_cmds(dbg_guild)
-      end
-
-    cmds =
-      for %{name: name, id: id} <- cmds_list, into: %{} do
-        {String.to_integer(id), String.to_existing_atom(name)}
-      end
-
-    Logger.info("Registered slash commands.")
-    {:reply, :ok, cmds}
-  end
-
-  @slash_commands Map.new(@slash_command)
-  defp slash_commands(), do: @slash_commands
-
-  defp prepare_guild_app_cmds(dbg_gld_str) do
-    {debug_guild, ""} = Integer.parse(String.trim(dbg_gld_str))
+  defp prepare_guild_app_cmds(debug_guild) do
+    Logger.info("Registering slash commands for guild #{debug_guild}")
     Api.bulk_overwrite_global_application_commands([])
     Api.bulk_overwrite_guild_application_commands(debug_guild, Map.values(slash_commands()))
   end
 
   defp prepare_global_app_cmds() do
+    Logger.info("Registered slash commands globally.")
     Api.bulk_overwrite_global_application_commands(Map.values(slash_commands()))
   end
 
