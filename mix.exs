@@ -4,7 +4,7 @@ defmodule FfcEx.MixProject do
   def project do
     [
       app: :ffc_ex,
-      version: "1.0.1-dev",
+      version: "1.1.0-dev",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps()

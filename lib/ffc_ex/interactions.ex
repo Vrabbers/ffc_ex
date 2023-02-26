@@ -341,9 +341,9 @@ defmodule FfcEx.Interactions do
 
       {:cannot_dm, users} ->
         """
-        Game \##{lobby.id} could not start as I have not been able to DM these players:
-        #{users |> Enum.map_join(" ", &"<@#{&1}>")}
-        Please change your privacy settings so I can send you people direct messages.
+        Game \##{lobby.id} did not start because I couldn't DM these players:
+        #{Enum.map_join(users, " ", &"<@#{&1}>")}
+        Please change your privacy settings so I can send you direct messages.
         """
     end
   end
@@ -371,7 +371,7 @@ defmodule FfcEx.Interactions do
   end
 
   defp prepare_global_app_cmds() do
-    Logger.info("Registered slash commands globally.")
+    Logger.info("Registered slash commands globally")
     Api.bulk_overwrite_global_application_commands(Map.values(slash_commands()))
   end
 
