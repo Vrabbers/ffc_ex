@@ -14,7 +14,7 @@ RUN mix local.rebar --force
 RUN mix deps.get
 RUN mix release
 
-FROM alpine:3.16 AS final
+FROM alpine:3.17 AS final
 
 RUN mkdir /app
 WORKDIR /app
