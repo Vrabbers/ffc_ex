@@ -1,4 +1,5 @@
 defmodule FfcEx.GameCmdParser do
+  alias FfcEx.Game.Card
   def parse(string) do
     case string |> String.trim() |> Integer.parse() do
       {int, rest} -> do_parse(int, String.trim(rest))
@@ -22,7 +23,8 @@ defmodule FfcEx.GameCmdParser do
       ["drop"] -> :drop
       ["spectate"] -> :spectate
       ["chat", arg] -> {:chat, arg}
-      ["play", card] -> {:play, card}
+      # HACK: hack!
+      ["play", card] -> {:play, Card.parse(card)}
       _ -> {:chat, rest}
       end
     {game_id, result}

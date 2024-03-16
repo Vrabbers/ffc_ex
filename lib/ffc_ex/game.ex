@@ -4,7 +4,6 @@ defmodule FfcEx.Game do
 
   alias FfcEx.{Game, Game.Card, Game.Deck, Lobby}
 
-  require Logger
   require Card
 
   @enforce_keys [
@@ -26,7 +25,6 @@ defmodule FfcEx.Game do
             id: Lobby.id(),
             players: [User.id()],
             hands: %{required(User.id()) => {Deck.t()}},
-            spectators: [User.id()],
             deck: Deck.t(),
             current_card: Card.t() | nil,
             drawn_card: Cart.t() | nil,
@@ -108,7 +106,7 @@ defmodule FfcEx.Game do
         {:reply, :must_play_drawn_card, game}
 
       game.called_ffc == {player, true} ->
-        {:noreply, :called_ffc_before, game}
+        {:reply, :called_ffc_before, game}
 
       game.was_valid_wild4 != nil ->
         {game, resp} =
@@ -141,7 +139,7 @@ defmodule FfcEx.Game do
         {:reply, :not_players_turn, game}
 
       game.drawn_card == nil ->
-        {:noreply, :cannot_pass, game}
+        {:reply, :cannot_pass, game}
 
       game.drawn_card != nil ->
         {game, resp} = {%Game{game | drawn_card: nil}, []} |> advance_player() |> turn_messages()
@@ -186,74 +184,84 @@ defmodule FfcEx.Game do
     end
   end
 
-  defp turn_message({game, resps}) do
+  # HACK! hack!
+  @impl true
+  def handle_call(:start_game, _from, game) do
+    Game.MessageQueue.broadcast_to(game.players, "start");
+    {:reply, :ok, game}
+  end
+
+  @impl true
+  def handle_call({player, :drop}, _from, game) do
+    {game, resp} = do_drop_player({game, []}, player)
+    {:reply, resp, game}
+  end
+
+
+  @spec do_drop_player({Game.t(), list() | atom()}, User.id()) :: {Game.t(), list()}
+  defp do_drop_player({game, resp}, player) do
+    if player in game.players do
+      resp = [{:drop, player} | resp]
+
+      if Game.playercount_valid?(length(game.players) - 1) do
+        was_current_player = current_player(game) == player
+        players = game.players -- [player]
+        {hand, hands} = Map.pop(game.hands, player)
+        deck = Deck.put_back(game.deck, hand)
+        game = %Game{game | players: players, hands: hands, deck: deck, drawn_card: nil}
+        if was_current_player, do: turn_messages({game, resp}), else: {game, resp}
+      else
+        {game, [{:end, :not_enough_players} | resp]}
+      end
+    end
+  end
+
+  defp turn_messages({game, resps}) do
     current_player = current_player(game)
 
-    resp_msg = cond do
-      game.was_valid_wild4 != nil -> :wild4_challenge_turn
-      game.cml_draw != nil -> :cml_draw_turn
-      game.was_valid_wild4 == nil and game.cml_draw == nil -> :normal_turn
-    end
+    resp_msg =
+      cond do
+        game.was_valid_wild4 != nil -> :wild4_challenge_turn
+        game.cml_draw != nil -> :cml_draw_turn
+        game.was_valid_wild4 == nil and game.cml_draw == nil -> :normal_turn
+      end
 
     {game, [{resp_msg, current_player} | resps]}
   end
 
-  defp do_play_card(game, player_id, {_, card_type} = card) do
-    player_hand = game.hands[player_id]
+  defp do_play_card(game, player, {_, card_type} = card) do
+    player_hand = game.hands[player]
 
     cond do
       !Deck.has_card?(player_hand, card) ->
-        tell(player_id, "You don't have this card!")
-        game
+        {game, :dont_have_card}
 
       game.drawn_card != nil and !Card.equal_nw?(game.drawn_card, card) ->
-        tell(player_id, "You must play the card you've drawn!")
-        game
+        {game, :must_play_drawn_card}
 
       !Card.can_play_on?(game.current_card, card) ->
-        tell(player_id, "This card can't be played! Cards that can be played are **__bold__**.")
-        game
+        {game, :cannot_play_card}
 
       game.cml_draw != nil and card_type != :draw2 ->
-        tell(player_id, "You must play a Draw 2 card or `draw` the cards.")
-        game
+        {game, :cml_draw_must_draw}
 
       (Card.can_play_on?(game.current_card, card) and game.cml_draw == nil) or
           (game.cml_draw != nil and card_type == :draw2) ->
-        play_card_turn_messages(game, card, player_id)
+        play_card_turn_messages(game, card, player)
     end
   end
 
-  defp play_card_turn_messages(game, card, player_id) do
-    broadcast(game,
-      embeds: [
-        %Embed{
-          title: "Card played!",
-          description: "#{username(player_id)} has played a **#{Card.to_string(card)}**"
-        }
-        |> put_id_footer(game)
-      ]
-    )
+  defp play_card_turn_messages(game, card, player) do
+    resp = [{:play_card, card}]
 
     new_deck = Deck.put_back(game.deck, game.current_card)
-    {_, new_hand} = Deck.remove(game.hands[player_id], card)
+    {_, new_hand} = Deck.remove(game.hands[player], card)
 
     if Enum.empty?(new_hand) do
       # Victory condition
-      author_img_url = User.avatar_url(Api.get_user!(player_id), "png")
-
-      end_game(game,
-        embeds: [
-          %Embed{
-            title: "Victory!",
-            description: "#{username(player_id)} has won the game!",
-            thumbnail: %Thumbnail{url: author_img_url}
-          }
-          |> put_id_footer(game)
-        ]
-      )
+      {game, [{:win, player} | resp]}
     else
-      card_special_message(game, card)
+      resp = [card_special_message(game, card) | resp]
 
       game =
         with {:wildcard_draw4, _} <- card do
@@ -263,308 +271,137 @@ defmodule FfcEx.Game do
             |> Enum.reject(&Card.equal_nw?(&1, {:wildcard_draw4, nil}))
             |> Enum.any?(&Card.can_play_on?(game.current_card, &1))
 
-          %Game{game | was_valid_wild4: {player_id, !can_play_other_cards}}
+          %Game{game | was_valid_wild4: {player, !can_play_other_cards}}
         else
           _ -> %Game{game | was_valid_wild4: nil}
         end
 
-      new_hands = Map.put(game.hands, player_id, new_hand)
+      new_hands = Map.put(game.hands, player, new_hand)
 
       game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
-      game = do_card_effect(game, card)
+      {game, resp} = do_card_effect({game, resp}, card)
 
       game =
-        if length(new_hand) == 1 and !match?({^player_id, true}, game.called_ffc) do
-          %Game{game | called_ffc: {player_id, false}}
+        if length(new_hand) == 1 and !match?({^player, true}, game.called_ffc) do
+          %Game{game | called_ffc: {player, false}}
         else
           %Game{game | called_ffc: nil}
         end
 
-      turn_messages(game)
+      turn_messages({game, resp})
     end
   end
 
-  defp do_draw_self(game, player_id) do
-    player_hand = game.hands[player_id]
+  defp do_draw_self(game, player) do
+    player_hand = game.hands[player]
     {drawn_card, deck} = Deck.get_random(game.deck)
 
-    broadcast_except(game, [player_id],
-      embeds: [
-        %Embed{
-          title: "Card drawn",
-          description: "#{username(player_id)} has drawn a card from the deck.",
-          thumbnail: %Thumbnail{url: "attachment://draw.png"}
-        }
-        |> put_id_footer(game)
-      ],
-      files: [PrivDir.file("draw.png")]
-    )
-
     new_hand = Deck.put_back(player_hand, drawn_card)
-    new_hands = Map.put(game.hands, player_id, new_hand)
-    game = %Game{game | hands: new_hands, deck: deck, called_ffc: nil}
+    new_hands = Map.put(game.hands, player, new_hand)
+    game = %Game{game | hands: new_hands, deck: deck, called_ffc: nil, drawn_card: drawn_card}
 
-    tell(player_id,
-      embeds: [
-        %Embed{
-          title: "Card drawn",
-          description:
-            "You have drawn a **#{Card.to_string(drawn_card)}**.\n" <>
-              if Card.can_play_on?(game.current_card, drawn_card) do
-                "Use `play #{Card.to_string(drawn_card)}` to play this card now or use `pass`."
-              else
-                "Since you can't play this card, use `pass`."
-              end,
-          thumbnail: %Thumbnail{url: "attachment://draw.png"}
-        }
-        |> put_id_footer(game)
-      ],
-      files: [PrivDir.file("draw.png")]
-    )
+    can_play_drawn =
+      if Card.can_play_on?(game.current_card, drawn_card) do
+        :can_play_drawn
+      else
+        :cant_play_drawn
+      end
 
-    %Game{game | drawn_card: drawn_card}
+    resp = [{:drew_card, player, can_play_drawn}]
+
+    {game, resp}
   end
 
   defp wild4_challenge(game, challenging_player) do
     {challenged_player, was_valid?} = game.was_valid_wild4
+    resp = [{:wild4_challenge, challenging_player, challenged_player, !was_valid?}]
 
-    broadcast(game,
-      embeds: [
-        %Embed{
-          title: "Wild Draw 4 challenge",
-          description: """
-          #{username(challenging_player)} has challenged the Wild Draw Four played \
-          by #{username(challenged_player)}, and has #{if was_valid?, do: "lost", else: "won"} \
-          the challenge.
-          """
-        }
-        |> put_id_footer(game)
-      ]
-    )
+    game = %Game{game | was_valid_wild4: nil}
 
     if was_valid? do
-      game |> force_draw(challenging_player, 6) |> advance_player()
+      {game, resp} |> force_draw(challenging_player, 6) |> advance_player()
     else
-      game |> force_draw(challenged_player, 4)
+      {game, resp} |> force_draw(challenged_player, 4)
     end
-    |> Map.put(:was_valid_wild4, nil)
     |> turn_messages()
   end
 
   defp card_special_message(game, card) do
     case card do
       {x, :skip} when Card.is_color(x) ->
-        broadcast(game,
-          embeds: [
-            %Embed{
-              title: "Turn skipped!",
-              description: "#{game |> next_player() |> username()}'s turn has been skipped!",
-              thumbnail: %Thumbnail{url: "attachment://skip.png"}
-            }
-            |> put_id_footer(game)
-          ],
-          files: [PrivDir.file("skip.png")]
-        )
+        {:skip, game |> next_player()}
 
       {x, :reverse} when Card.is_color(x) ->
-        broadcast(game,
-          embeds: [
-            %Embed{
-              title: "Play reversed!",
-              description: "The direction of play has been reversed.",
-              thumbnail: %Thumbnail{url: "attachment://reverse.png"}
-            }
-            |> put_id_footer(game)
-          ],
-          files: [PrivDir.file("reverse.png")]
-        )
+        :play_reversed
 
       {x, col} when Card.is_wildcard(x) and Card.is_color(col) ->
-        broadcast(game,
-          embeds: [
-            %Embed{
-              title: "Color changed!",
-              description: "The color has changed to **#{col}**.",
-              thumbnail: %Thumbnail{url: "attachment://#{col}.png"}
-            }
-            |> put_id_footer(game)
-          ],
-          files: [PrivDir.file("#{col}.png")]
-        )
+        {:color_changed, col}
 
       _ ->
-        :noop
+        nil
     end
   end
 
-  defp do_card_effect(game, card) do
+  defp do_card_effect({game, resp}, card) do
     case card do
       {x, no} when Card.is_cardno(no) or Card.is_wildcard(x) ->
-        advance_player(game)
+        advance_player({game, resp})
 
       {_, :skip} ->
-        advance_twice(game)
+        advance_twice({game, resp})
 
       {_, :reverse} ->
         if length(game.players) == 2 do
-          game |> reverse_playing_order() |> advance_player()
+          {game, resp} |> reverse_playing_order() |> advance_player()
         else
-          game |> reverse_playing_order()
+          {game, resp} |> reverse_playing_order()
         end
 
       {_, :draw2} ->
         if :cumulative_draw in game.house_rules do
           cml_draw = if game.cml_draw == nil, do: 2, else: game.cml_draw + 2
-          advance_player(%Game{game | cml_draw: cml_draw})
+          advance_player({%Game{game | cml_draw: cml_draw}, resp})
         else
-          game |> draw_next(2) |> advance_twice()
+          {game, resp} |> draw_next(2) |> advance_twice()
         end
     end
   end
 
-  defp draw_next(game, amt) do
+  defp draw_next({game, resp}, amt) do
     next_player = next_player(game)
-    force_draw(game, next_player, amt)
+    force_draw({game, resp}, next_player, amt)
   end
 
-  defp force_draw(game, player, amt) do
-    file =
-      case amt do
-        2 -> "draw2.png"
-        4 -> "draw4.png"
-        6 -> "draw6.png"
-        _ -> "draw.png"
-      end
-
-    broadcast(game,
-      embeds: [
-        %Embed{
-          title: "Drawn cards",
-          description: "#{username(player)} has been forced to draw #{amt} cards!",
-          thumbnail: %Thumbnail{url: "attachment://#{file}"}
-        }
-        |> put_id_footer(game)
-      ],
-      files: [PrivDir.file(file)]
-    )
-
+  defp force_draw({game, resp}, player, amt) do
+    resp = [{:force_draw, player, amt} | resp]
     {drawn, deck} = Deck.get_many(game.deck, amt)
     hands = Map.update!(game.hands, player, &(drawn ++ &1))
-    %Game{game | deck: deck, hands: hands}
+    {%Game{game | deck: deck, hands: hands}, resp}
   end
 
-  @spec participants(Game.t()) :: [User.id()]
   defp participants(game) do
-    game.players ++ game.spectators
-  end
-
-  defp broadcast(game, message) do
-    broadcast_to(participants(game), message)
-  end
-
-  defp broadcast_except(game, except_users, message) do
-    broadcast_to(participants(game) -- except_users, message)
-  end
-
-  defp broadcast_to(users, message) do
-    Game.MessageQueue.broadcast_to(users, message)
-  end
-
-  defp tell(user, message) do
-    Game.MessageQueue.tell(user, message)
-  end
-
-  defp put_id_footer(embed, game) do
-    embed = Embed.put_footer(embed, "Game \##{game.id}")
-
-    if embed.color == nil do
-      Embed.put_color(embed, Application.fetch_env!(:ffc_ex, :color))
-    else
-      embed
-    end
-  end
-
-  defp do_drop_player(game, player) do
-    if player in game.players do
-      broadcast(game, "*\##{game.id}* - #{username(player)} has dropped from the game.")
-
-      if Game.playercount_valid?(length(game.players) - 1) do
-        was_current_player = current_player(game) == player
-        players = game.players -- [player]
-        {hand, hands} = Map.pop(game.hands, player)
-        deck = Deck.put_back(game.deck, hand)
-        game = %Game{game | players: players, hands: hands, deck: deck, drawn_card: nil}
-        if was_current_player, do: turn_messages(game), else: game
-      else
-        end_game(game, "Game \##{game.id} has ended as there weren't enough players to continue.")
-      end
-    else
-      tell(player, "You have stopped spectating the game.")
-      %Game{game | spectators: game.spectators -- [player]}
-    end
-  end
-
-  defp end_game(game, message) do
-    broadcast(game, message)
-    exit(:normal)
+    game.players
   end
 
   defp next_player(game) do
     Enum.at(game.players, 1)
   end
 
-  defp formatted_hand(hand, current_card) do
-    hand
-    |> Enum.map(fn card -> {Card.to_string(card), Card.can_play_on?(current_card, card)} end)
-    |> Enum.sort_by(fn {card, _} -> card end, :asc)
-    |> Enum.map_join(
-      " ",
-      fn
-        {card, true} -> "**__#{card}__**"
-        {card, false} -> card
-      end
-    )
-  end
-
   defp current_player(game) do
     hd(game.players)
   end
 
-  defp advance_player(game) do
+  defp advance_player({game, resp}) do
     [first | others] = game.players
     players = others ++ [first]
-    %Game{game | players: players, drawn_card: nil}
+    {%Game{game | players: players, drawn_card: nil}, resp}
   end
 
-  defp advance_twice(game) do
-    game |> advance_player() |> advance_player()
+  defp advance_twice(game_resp) do
+    game_resp |> advance_player() |> advance_player()
   end
 
-  defp reverse_playing_order(game) do
-    %Game{game | players: Enum.reverse(game.players)}
-  end
-
-  defp uname_discrim(player) do
-    {:ok, user} = Api.get_user(player)
-    "#{user.username}\##{user.discriminator}"
-  end
-
-  defp username(player) do
-    {:ok, user} = Api.get_user(player)
-    user.username
-  end
-
-  defp format_user(game, player) do
-    card_amt = length(game.hands[player])
-    card_plural = if card_amt == 1, do: "card", else: "cards"
-    "#{username(player)} – #{card_amt} #{card_plural}"
-  end
-
-  defp put_field_if(embed, condition, title, value, inline \\ nil) do
-    if condition do
-      Embed.put_field(embed, title, value, inline)
-    else
-      embed
-    end
+  defp reverse_playing_order({game, resp}) do
+    {%Game{game | players: Enum.reverse(game.players)}, resp}
   end
 end

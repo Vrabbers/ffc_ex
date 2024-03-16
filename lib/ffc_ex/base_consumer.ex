@@ -7,10 +7,6 @@ defmodule FfcEx.BaseConsumer do
 
   require Logger
 
-  def start_link() do
-    Consumer.start_link(__MODULE__, name: __MODULE__)
-  end
-
   @impl true
   def handle_event({:READY, %Event.Ready{v: v}, _ws_state}) do
     Logger.info("#{__MODULE__} ready on gateway v#{v}.")
@@ -38,15 +34,18 @@ defmodule FfcEx.BaseConsumer do
       end
 
     if game != nil and Game.part_of?(game, msg.author.id) do
-      res = Game.do_cmd(game, msg.author.id, cmd)
+      res = GenServer.call(game, {msg.author.id, cmd})
 
       if int != nil do
         PlayerRouter.set_for(msg.author.id, int)
       end
 
-      if res and match?({:chat, _}, cmd) do
+      if match?({:chat, _}, cmd) do
         Api.create_reaction!(msg.channel_id, msg.id, "✅")
       end
+
+      #HACK! HACK!
+      Game.MessageQueue.tell(msg.author.id, inspect(res))
     end
   end
 
