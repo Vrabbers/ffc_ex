@@ -24,7 +24,9 @@ defmodule FfcEx.GameCmdParser do
       ["spectate"] -> :spectate
       ["chat", arg] -> {:chat, arg}
       # HACK: hack!
-      ["play", card] -> {:play, Card.parse(card)}
+      ["play", card] ->
+        {:ok, card} = Card.parse(card)
+        {:play, card}
       _ -> {:chat, rest}
       end
     {game_id, result}

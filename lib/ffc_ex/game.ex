@@ -5,6 +5,7 @@ defmodule FfcEx.Game do
   alias FfcEx.{Game, Game.Card, Game.Deck, Lobby}
 
   require Card
+  require Logger
 
   @enforce_keys [
     :id,
@@ -50,7 +51,7 @@ defmodule FfcEx.Game do
   end
 
   def start_link(lobby) do
-    GenServer.start_link(__MODULE__, lobby)
+    GenServer.start_link(__MODULE__, lobby, name: {:via, Registry, {FfcEx.GameRegistry, lobby.id}})
   end
 
   @impl true
@@ -78,7 +79,7 @@ defmodule FfcEx.Game do
 
   @impl true
   def handle_call({:is_part_of, user}, _from, game) do
-    {:reply, user in participants(game), game}
+    {:reply, user in game.players, game}
   end
 
   @impl true
@@ -226,7 +227,7 @@ defmodule FfcEx.Game do
         game.was_valid_wild4 == nil and game.cml_draw == nil -> :normal_turn
       end
 
-    {game, [{resp_msg, current_player} | resps]}
+    {game, [{resp_msg, current_player, game.current_card} | resps]}
   end
 
   defp do_play_card(game, player, {_, card_type} = card) do
@@ -259,7 +260,7 @@ defmodule FfcEx.Game do
 
     if Enum.empty?(new_hand) do
       # Victory condition
-      {game, [{:win, player} | resp]}
+      {game, [{:end, {:win, player}} | resp]}
     else
       resp = [card_special_message(game, card) | resp]
 
@@ -338,7 +339,7 @@ defmodule FfcEx.Game do
         {:color_changed, col}
 
       _ ->
-        nil
+        :no_special_effect_message
     end
   end
 
@@ -377,10 +378,6 @@ defmodule FfcEx.Game do
     {drawn, deck} = Deck.get_many(game.deck, amt)
     hands = Map.update!(game.hands, player, &(drawn ++ &1))
     {%Game{game | deck: deck, hands: hands}, resp}
-  end
-
-  defp participants(game) do
-    game.players
   end
 
   defp next_player(game) do

@@ -85,7 +85,7 @@ defmodule FfcEx.GameLobbies do
       lobby == nil ->
         {:reply, :timeout, state}
 
-      lobby.starting_user == user || Enum.any?(lobby.players, &(&1 == user)) ->
+      lobby.starting_user == user or Enum.any?(lobby.players, &(&1 == user)) ->
         {:reply, {:already_joined, lobby.id}, state}
 
       true ->

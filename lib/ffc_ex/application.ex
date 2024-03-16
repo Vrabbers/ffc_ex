@@ -30,7 +30,7 @@ defmodule FfcEx.GameRegistrySupervisor do
   def init([]) do
     children = [
       FfcEx.GameSupervisor,
-      FfcEx.GameRegistry
+      {Registry, keys: :unique, name: FfcEx.GameRegistry},
     ]
 
     # The registry and the supervisor are interdependent
