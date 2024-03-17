@@ -77,6 +77,10 @@ defmodule FfcEx.Game do
     GenServer.call(game, :current_card)
   end
 
+  def status(game) do
+    GenServer.call(game, :status)
+  end
+
   def hand(game, player) do
     GenServer.call(game, {player, :hand})
   end
@@ -84,6 +88,14 @@ defmodule FfcEx.Game do
   @impl true
   def handle_call(:current_card, _from, game) do
     {:reply, game.current_card, game}
+  end
+
+  @impl true
+  def handle_call(:status, _from, game) do
+    players_cards =
+      game.players |> Enum.map(fn player -> {player, length(game.hands[player])} end)
+
+    {:reply, {players_cards, game.current_card}, game}
   end
 
   @impl true
@@ -186,7 +198,8 @@ defmodule FfcEx.Game do
 
       match?({_, false}, game.called_ffc) and game.called_ffc != {player, false} ->
         {forgot_ffc, false} = game.called_ffc
-        {game, resp} = force_draw({game, []}, forgot_ffc, 2)
+        message = {:forgot_ffc_challenge, forgot_ffc, player}
+        {game, resp} = force_draw({game, [message]}, forgot_ffc, 2)
         {:reply, resp, game}
 
       true ->
@@ -234,7 +247,30 @@ defmodule FfcEx.Game do
         game.was_valid_wild4 == nil and game.cml_draw == nil -> :normal_turn
       end
 
-    {game, [{resp_msg, current_player, game.current_card} | resps]}
+    must_draw = !Enum.any?(game.hands[current_player], &Card.can_play_on?(game.current_card, &1))
+
+    conditions =
+      [
+        if must_draw and game.cml_draw == nil do
+          :must_draw
+        else
+          nil
+        end,
+        case game.called_ffc do
+          {forgot_ffc, false} when forgot_ffc != current_player ->
+            {:forgot_ffc, forgot_ffc}
+
+          _ ->
+            nil
+        end
+      ]
+      |> Enum.filter(&Function.identity/1)
+
+    {game,
+     [
+       {resp_msg, current_player, game.hands[current_player], game.current_card, conditions}
+       | resps
+     ]}
   end
 
   defp do_play_card(game, player, {_, card_type} = card) do
@@ -269,7 +305,11 @@ defmodule FfcEx.Game do
       # Victory condition
       {game, [{:end, {:win, player}} | resp]}
     else
-      resp = [card_special_message(game, card) | resp]
+      resp =
+        case card_special_message(game, card) do
+          nil -> resp
+          x -> [x | resp]
+        end
 
       game =
         with {:wildcard_draw4, _} <- card do
@@ -315,7 +355,7 @@ defmodule FfcEx.Game do
         :cant_play_drawn
       end
 
-    resp = [{:drew_card, player, can_play_drawn}]
+    resp = [{:drew_card, drawn_card, player, can_play_drawn}]
 
     {game, resp}
   end
@@ -346,7 +386,7 @@ defmodule FfcEx.Game do
         {:color_changed, col}
 
       _ ->
-        :no_special_effect_message
+        nil
     end
   end
 

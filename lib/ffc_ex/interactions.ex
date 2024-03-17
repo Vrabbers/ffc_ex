@@ -2,6 +2,9 @@ defmodule FfcEx.Interactions do
   Module.register_attribute(__MODULE__, :slash_command, accumulate: true)
   use GenServer
 
+  alias FfcEx.Format
+  alias FfcEx.Util
+  alias FfcEx.Broadcaster
   alias FfcEx.GameLobbies
   alias Nostrum.{Api, Struct.Embed, Struct.Interaction, Struct.User, Util}
 
@@ -161,7 +164,7 @@ defmodule FfcEx.Interactions do
           {"Lobby no longer exists: it may have closed or timed out.", message_flags(:ephemeral)}
 
         {:joined, id} ->
-          {"**#{uname_discrim(interaction.user)}** has joined game \##{id}!", 0}
+          {"**#{Format.uname(interaction.user)}** has joined game \##{id}!", 0}
 
         {:already_joined, id} ->
           {"You have already joined \##{id}.", message_flags(:ephemeral)}
@@ -185,7 +188,7 @@ defmodule FfcEx.Interactions do
           {"As you created this game, you cannot spectate this game.", message_flags(:ephemeral)}
 
         {:spectating, id} ->
-          {"**#{uname_discrim(interaction.user)}** is spectating game \##{id}!", 0}
+          {"**#{Format.uname(interaction.user)}** is spectating game \##{id}!", 0}
 
         :already_spectating ->
           {"You are already spectating this game.", message_flags(:ephemeral)}
@@ -209,7 +212,7 @@ defmodule FfcEx.Interactions do
           {"As you created this game, you cannot leave this game.", message_flags(:ephemeral)}
 
         {:left, id} ->
-          {"**#{uname_discrim(interaction.user)}** has left game \##{id}.", 0}
+          {"**#{Format.uname(interaction.user)}** has left game \##{id}.", 0}
 
         :not_in_game ->
           {"You are not in this game.", message_flags(:ephemeral)}
@@ -330,13 +333,10 @@ defmodule FfcEx.Interactions do
   @slash_commands Map.new(@slash_command)
   defp slash_commands(), do: @slash_commands
 
-  defp uname_discrim(user) do
-    "#{user.username}\##{user.discriminator}"
-  end
-
   defp start_game(lobby, game) do
     case FfcEx.GameResponder.start_game(game) do
-      :ok ->
+      {:ok, response} ->
+        Broadcaster.send_messages(response)
         "**Lobby \##{lobby.id}** was closed and the game is starting."
 
       {:cannot_dm, users} ->

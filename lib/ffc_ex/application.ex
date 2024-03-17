@@ -5,7 +5,6 @@ defmodule FfcEx.Application do
   def start(_type, _args) do
     children = [
       {Task.Supervisor, name: FfcEx.TaskSupervisor},
-      FfcEx.Game.MessageQueue,
       FfcEx.PlayerRouter,
       FfcEx.GameRegistrySupervisor,
       FfcEx.GameLobbies,

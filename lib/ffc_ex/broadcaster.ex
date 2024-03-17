@@ -1,41 +1,29 @@
-defmodule FfcEx.Game.MessageQueue do
+defmodule FfcEx.Broadcaster do
   alias FfcEx.DmCache
   alias Nostrum.Api
 
-  use GenServer
-
-  def start_link([]) do
-    GenServer.start_link(__MODULE__, nil, name: __MODULE__)
-  end
-
-  @impl true
-  def init(nil) do
-    {:ok, nil}
-  end
-
   def tell(user_id, message) do
-    GenServer.cast(__MODULE__, {:tell, user_id, message})
+    send_messages({:tell, user_id, message})
   end
 
   def broadcast_to(users, message) do
-    GenServer.cast(__MODULE__, {:broadcast_to, users, message})
+    send_messages({:broadcast_to, users, message})
   end
 
-  @impl true
-  def handle_cast({:tell, uid, msg}, _) do
+  def send_messages(messages) when is_list(messages) do
+    Enum.each(messages, &send_messages/1)
+  end
+
+  def send_messages({:tell, uid, msg}) do
     Task.await(do_tell(uid, msg))
-    {:noreply, nil}
   end
 
-  @impl true
-  def handle_cast({:broadcast_to, uids, msg}, _) do
+  def send_messages({:broadcast_to, uids, msg}) do
     Task.await_many(
       for user_id <- uids do
         do_tell(user_id, msg)
       end
     )
-
-    {:noreply, nil}
   end
 
   defp do_tell(user_id, message) do

@@ -1,6 +1,7 @@
 defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
+  alias FfcEx.Broadcaster
   alias FfcEx.GameResponder
   alias FfcEx.Interactions
   alias FfcEx.{GameCmdParser, GameRegistry, PlayerRouter}
@@ -35,14 +36,17 @@ defmodule FfcEx.BaseConsumer do
       end
 
     if game != nil and GameResponder.part_of?(game, msg.author.id) do
-      GameResponder.command(game, msg.author.id, cmd)
-
       if int != nil do
         PlayerRouter.set_for(msg.author.id, int)
       end
 
-      if match?({:chat, _}, cmd) do
-        Api.create_reaction!(msg.channel_id, msg.id, "✅")
+      case GameResponder.command(game, msg.author.id, cmd) do
+        {:send_chat_message, term} ->
+          Broadcaster.send_messages(term)
+          Api.create_reaction!(msg.channel_id, msg.id, "✅")
+
+        term ->
+          Broadcaster.send_messages(term)
       end
     end
   end
