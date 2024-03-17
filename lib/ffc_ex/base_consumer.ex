@@ -1,8 +1,9 @@
 defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
+  alias FfcEx.GameResponder
   alias FfcEx.Interactions
-  alias FfcEx.{Game, GameCmdParser, GameRegistry, PlayerRouter}
+  alias FfcEx.{GameCmdParser, GameRegistry, PlayerRouter}
   alias Nostrum.{Api, Struct.Event, Struct.User, Struct.Message}
 
   require Logger
@@ -27,14 +28,14 @@ defmodule FfcEx.BaseConsumer do
       case int do
         nil ->
           id = PlayerRouter.lookup(msg.author.id)
-          GameRegistry.get_game(id)
+          GameRegistry.get_game_responder(id)
 
         x ->
-          GameRegistry.get_game(x)
+          GameRegistry.get_game_responder(x)
       end
 
-    if game != nil and Game.part_of?(game, msg.author.id) do
-      res = GenServer.call(game, {msg.author.id, cmd})
+    if game != nil and GameResponder.part_of?(game, msg.author.id) do
+      GameResponder.command(game, msg.author.id, cmd)
 
       if int != nil do
         PlayerRouter.set_for(msg.author.id, int)
@@ -43,9 +44,6 @@ defmodule FfcEx.BaseConsumer do
       if match?({:chat, _}, cmd) do
         Api.create_reaction!(msg.channel_id, msg.id, "✅")
       end
-
-      #HACK! HACK!
-      Game.MessageQueue.tell(msg.author.id, inspect(res))
     end
   end
 

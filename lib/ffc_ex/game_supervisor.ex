@@ -1,6 +1,7 @@
 defmodule FfcEx.GameSupervisor do
   use DynamicSupervisor
 
+  alias FfcEx.GameResponder
   alias FfcEx.Lobby
   alias FfcEx.Game
 
@@ -10,7 +11,8 @@ defmodule FfcEx.GameSupervisor do
 
   @spec start_child(Lobby.t()) :: DynamicSupervisor.on_start_child()
   def start_child(lobby) do
-    DynamicSupervisor.start_child(__MODULE__, {Game, lobby})
+    {:ok, game_pid} = DynamicSupervisor.start_child(__MODULE__, {Game, lobby})
+    DynamicSupervisor.start_child(__MODULE__, {GameResponder, {lobby, game_pid}})
   end
 
   @impl true

@@ -40,18 +40,14 @@ defmodule FfcEx.Game do
     count in 2..10
   end
 
-  @spec start_game(pid()) :: :ok | {:cannot_dm, [User.id()]}
   def start_game(game) do
-    GenServer.call(game, :start_game, :infinity)
-  end
-
-  @spec part_of?(pid(), User.id()) :: boolean()
-  def part_of?(game, user) do
-    GenServer.call(game, {:is_part_of, user})
+    GenServer.call(game, :start_game)
   end
 
   def start_link(lobby) do
-    GenServer.start_link(__MODULE__, lobby, name: {:via, Registry, {FfcEx.GameRegistry, lobby.id}})
+    GenServer.start_link(__MODULE__, lobby,
+      name: {:via, Registry, {FfcEx.GameRegistry, {:game, lobby.id}}}
+    )
   end
 
   @impl true
@@ -75,11 +71,6 @@ defmodule FfcEx.Game do
     }
 
     {:ok, game}
-  end
-
-  @impl true
-  def handle_call({:is_part_of, user}, _from, game) do
-    {:reply, user in game.players, game}
   end
 
   @impl true
@@ -185,11 +176,10 @@ defmodule FfcEx.Game do
     end
   end
 
-  # HACK! hack!
   @impl true
   def handle_call(:start_game, _from, game) do
-    Game.MessageQueue.broadcast_to(game.players, "start");
-    {:reply, :ok, game}
+    {game, resp} = turn_messages({game, [:welcome]})
+    {:reply, resp, game}
   end
 
   @impl true
@@ -197,7 +187,6 @@ defmodule FfcEx.Game do
     {game, resp} = do_drop_player({game, []}, player)
     {:reply, resp, game}
   end
-
 
   @spec do_drop_player({Game.t(), list() | atom()}, User.id()) :: {Game.t(), list()}
   defp do_drop_player({game, resp}, player) do

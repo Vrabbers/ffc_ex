@@ -335,7 +335,7 @@ defmodule FfcEx.Interactions do
   end
 
   defp start_game(lobby, game) do
-    case FfcEx.Game.start_game(game) do
+    case FfcEx.GameResponder.start_game(game) do
       :ok ->
         "**Lobby \##{lobby.id}** was closed and the game is starting."
 
