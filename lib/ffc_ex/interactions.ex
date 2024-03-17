@@ -242,10 +242,13 @@ defmodule FfcEx.Interactions do
           {"The game was not able to start because the amount of players was invalid.", 0}
       end
 
-    Api.create_interaction_response!(interaction, %{
-      type: interaction_callback_type(:channel_message_with_source),
-      data: %{content: msg, flags: flags}
-    })
+    Api.create_interaction_response!(
+      interaction,
+      %{
+        type: interaction_callback_type(:channel_message_with_source),
+        data: %{content: msg, flags: flags}
+      }
+    )
   end
 
   def start_link([]) do
@@ -336,7 +339,10 @@ defmodule FfcEx.Interactions do
   defp start_game(lobby, game) do
     case FfcEx.GameResponder.start_game(game) do
       {:ok, response} ->
-        Broadcaster.send_messages(response)
+        Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
+          Broadcaster.send_messages(response)
+        end)
+
         "**Lobby \##{lobby.id}** was closed and the game is starting."
 
       {:cannot_dm, users} ->

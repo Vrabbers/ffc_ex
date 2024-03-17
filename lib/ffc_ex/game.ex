@@ -45,9 +45,7 @@ defmodule FfcEx.Game do
   end
 
   def start_link(lobby) do
-    GenServer.start_link(__MODULE__, lobby,
-      name: {:via, Registry, {FfcEx.GameRegistry, {:game, lobby.id}}}
-    )
+    GenServer.start_link(__MODULE__, lobby)
   end
 
   @impl true
@@ -296,7 +294,7 @@ defmodule FfcEx.Game do
   end
 
   defp play_card_turn_messages(game, card, player) do
-    resp = [{:play_card, card}]
+    resp = [{:play_card, player, card}]
 
     new_deck = Deck.put_back(game.deck, game.current_card)
     {_, new_hand} = Deck.remove(game.hands[player], card)

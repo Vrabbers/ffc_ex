@@ -1,4 +1,5 @@
 defmodule FfcEx.GameResponder do
+  alias FfcEx.Broadcaster
   alias FfcEx.Format
   alias Nostrum.Struct.Embed.Field
   alias Nostrum.Struct.User
@@ -25,16 +26,42 @@ defmodule FfcEx.GameResponder do
     GenServer.call(pid, {:part_of?, uid})
   end
 
+  def start_link(lobby) do
+    GenServer.start_link(__MODULE__, lobby,
+      name: {:via, Registry, {FfcEx.GameRegistry, lobby.id}}
+    )
+  end
+
   @impl true
-  def init({lobby, game}) do
-    Process.link(game)
+  def init(lobby) do
+    Process.flag(:trap_exit, true)
+    {:ok, game} = Game.start_link(lobby)
     {:ok, %{players: lobby.players, spectators: lobby.spectators, game: game, id: lobby.id}}
   end
 
-  def start_link({lobby, game}) do
-    GenServer.start_link(__MODULE__, {lobby, game},
-      name: {:via, Registry, {FfcEx.GameRegistry, {:resp, lobby.id}}}
-    )
+  @impl true
+  def terminate(reason, responder) do
+    if reason != :normal do
+      Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
+        Broadcaster.send_messages(
+          broadcast(
+            responder,
+            """
+            🔴 Unfortunately, game \##{responder.id} closed due to an error. \
+            Use `/create` to start a new game.
+            """
+          )
+        )
+      end)
+    end
+  end
+
+  @impl true
+  def handle_info({:EXIT, pid, reason}, responder) do
+    if pid == responder.game do
+      Logger.debug("Game \##{responder.id} exited for: #{inspect(reason)}. Responder exiting")
+    end
+    {:stop, reason, responder}
   end
 
   @impl true
@@ -118,6 +145,7 @@ defmodule FfcEx.GameResponder do
 
       {:ok, card} ->
         resp = GenServer.call(responder.game, {uid, {:play, card}})
+
         if Enum.any?(resp, fn r -> match?({:end, {:win, _}}, r) end) do
           # Victory!
           {:stop, :normal, respond(resp, responder), responder}
