@@ -73,6 +73,24 @@ defmodule FfcEx.Game do
     {:ok, game}
   end
 
+  def current_card(game) do
+    GenServer.call(game, :current_card)
+  end
+
+  def hand(game, player) do
+    GenServer.call(game, {player, :hand})
+  end
+
+  @impl true
+  def handle_call(:current_card, _from, game) do
+    {:reply, game.current_card, game}
+  end
+
+  @impl true
+  def handle_call({player, :hand}, _from, game) do
+    {:reply, game.hands[player], game}
+  end
+
   @impl true
   def handle_call({player, {:play, card}}, _from, game) do
     cond do

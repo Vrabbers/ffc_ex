@@ -1,5 +1,4 @@
 defmodule FfcEx.PrivDir do
-
   @spec path() :: Path.t()
   def path() do
     Application.app_dir(:ffc_ex, "priv")
