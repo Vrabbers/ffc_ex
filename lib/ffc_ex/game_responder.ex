@@ -1,4 +1,5 @@
 defmodule FfcEx.GameResponder do
+  alias FfcEx.PrivDir
   alias FfcEx.Broadcaster
   alias FfcEx.Format
   alias Nostrum.Struct.Embed.Field
@@ -43,14 +44,12 @@ defmodule FfcEx.GameResponder do
   def terminate(reason, responder) do
     if reason != :normal do
       Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
-        Broadcaster.send_messages(
-          broadcast(
-            responder,
-            """
-            🔴 Unfortunately, game \##{responder.id} closed due to an error. \
-            Use `/create` to start a new game.
-            """
-          )
+        Broadcaster.broadcast_to(
+          participants(responder),
+          """
+          🔴 Unfortunately, game \##{responder.id} has closed due to an error. \
+          Use `/create` to start a new game.
+          """
         )
       end)
     end
@@ -61,6 +60,7 @@ defmodule FfcEx.GameResponder do
     if pid == responder.game do
       Logger.debug("Game \##{responder.id} exited for: #{inspect(reason)}. Responder exiting")
     end
+
     {:stop, reason, responder}
   end
 
@@ -146,7 +146,7 @@ defmodule FfcEx.GameResponder do
       {:ok, card} ->
         resp = GenServer.call(responder.game, {uid, {:play, card}})
 
-        if Enum.any?(resp, fn r -> match?({:end, {:win, _}}, r) end) do
+        if is_list(resp) and Enum.any?(resp, fn r -> match?({:end, {:win, _}}, r) end) do
           # Victory!
           {:stop, :normal, respond(resp, responder), responder}
         else
@@ -205,6 +205,57 @@ defmodule FfcEx.GameResponder do
         "*##{responder.id} – #{Format.uname(turns_uid)}'s turn*"
       )
     ]
+  end
+
+  defp respond({:play_card, player, card}, responder) do
+    broadcast(responder,
+      embeds: [
+        %Embed{
+          title: "Card played!",
+          description: "#{Format.uname(player)} has played a **#{Card.to_string(card)}**"
+        }
+        |> footer_color(responder)
+      ]
+    )
+  end
+
+  defp respond({:drew_card, card, player, can_play}, responder) do
+    personal_message =
+      case can_play do
+        :can_play_drawn ->
+          "Use `play #{Card.to_string(card)}` to play this card now or use `pass`."
+
+        :cant_play_drawn ->
+          "Since you can't play this card, use `pass`."
+      end
+
+    author_message =
+      tell(player,
+        embeds: [
+          %Embed{
+            title: "Card drawn",
+            description: "You have drawn **#{Card.to_string(card)}**.\n" <> personal_message,
+            thumbnail: %Thumbnail{url: "attachment://draw.png"}
+          }
+          |> footer_color(responder)
+        ],
+        files: [PrivDir.file("draw.png")]
+      )
+
+    everyone_message =
+      broadcast_except(responder, [player],
+        embeds: [
+          %Embed{
+            title: "Card drawn",
+            description: "#{Format.uname(player)} has drawn a card from the deck.",
+            thumbnail: %Thumbnail{url: "attachment://draw.png"}
+          }
+          |> footer_color(responder)
+        ],
+        files: [PrivDir.file("draw.png")]
+      )
+
+    [author_message, everyone_message]
   end
 
   defp respond(term, responder) do
@@ -278,8 +329,8 @@ defmodule FfcEx.GameResponder do
     {:tell, user, message}
   end
 
-  defp footer_color(embed, game) do
-    embed = Embed.put_footer(embed, "Game \##{game.id}")
+  defp footer_color(embed, responder) do
+    embed = Embed.put_footer(embed, "Game \##{responder.id}")
 
     if embed.color == nil do
       Embed.put_color(embed, Application.fetch_env!(:ffc_ex, :color))

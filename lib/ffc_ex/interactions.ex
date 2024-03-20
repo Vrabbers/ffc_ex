@@ -340,7 +340,7 @@ defmodule FfcEx.Interactions do
     case FfcEx.GameResponder.start_game(game) do
       {:ok, response} ->
         Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
-          Broadcaster.send_messages(response)
+          Broadcaster.send_messages(response, :no_author)
         end)
 
         "**Lobby \##{lobby.id}** was closed and the game is starting."

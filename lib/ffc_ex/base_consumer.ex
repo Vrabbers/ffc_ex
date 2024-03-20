@@ -42,11 +42,11 @@ defmodule FfcEx.BaseConsumer do
 
       case GameResponder.command(game, msg.author.id, cmd) do
         {:send_chat_message, term} ->
-          Broadcaster.send_messages(term)
+          Broadcaster.send_messages(term, msg.author.id)
           Api.create_reaction!(msg.channel_id, msg.id, "✅")
 
         term ->
-          Broadcaster.send_messages(term)
+          Broadcaster.send_messages(term, msg.author.id)
       end
     end
   end
