@@ -1,7 +1,4 @@
 defmodule FfcEx.Game do
-  # Doesn't make much sense to try restarting a crashed game
-  use GenServer, restart: :temporary
-
   alias FfcEx.{Game, Game.Card, Game.Deck, Lobby}
 
   require Card
@@ -40,15 +37,6 @@ defmodule FfcEx.Game do
     count in 2..10
   end
 
-  def start_game(game) do
-    GenServer.call(game, :start_game)
-  end
-
-  def start_link(lobby) do
-    GenServer.start_link(__MODULE__, lobby)
-  end
-
-  @impl true
   def init(lobby) do
     deck = Deck.new()
     {last, deck} = Deck.get_matching(deck, &Card.is_valid_first_card?/1)
@@ -68,159 +56,121 @@ defmodule FfcEx.Game do
       cml_draw: nil
     }
 
-    {:ok, game}
+    game
   end
 
+  @deprecated "acess struct directly"
   def current_card(game) do
-    GenServer.call(game, :current_card)
+    game.current_card
   end
 
   def status(game) do
-    GenServer.call(game, :status)
-  end
-
-  def hand(game, player) do
-    GenServer.call(game, {player, :hand})
-  end
-
-  @impl true
-  def handle_call(:current_card, _from, game) do
-    {:reply, game.current_card, game}
-  end
-
-  @impl true
-  def handle_call(:status, _from, game) do
     players_cards =
       game.players |> Enum.map(fn player -> {player, length(game.hands[player])} end)
 
-    {:reply, {players_cards, game.current_card}, game}
+    {players_cards, game.current_card}
   end
 
-  @impl true
-  def handle_call({player, :hand}, _from, game) do
-    {:reply, game.hands[player], game}
+  @deprecated "acess struct directly"
+  def hand(game, player) do
+    game.hands[player]
   end
 
-  @impl true
-  def handle_call({player, {:play, card}}, _from, game) do
+  def start_game(game) do
+    turn_messages({[:welcome], game})
+  end
+
+  def play(game, player, card) do
     cond do
       current_player(game) != player ->
-        {:reply, :not_players_turn, game}
+        {:not_players_turn, game}
 
       game.was_valid_wild4 != nil ->
-        {:reply, :resolve_wild4_challenge, game}
+        {:resolve_wild4_challenge, game}
 
       game.was_valid_wild4 == nil ->
-        {game, resp} = do_play_card(game, player, card)
-        {:reply, resp, game}
+        do_play_card(game, player, card)
     end
   end
 
-  @impl true
-  def handle_call({player, :draw}, _from, game) do
+  def draw(game, player) do
     cond do
       current_player(game) != player ->
-        {:reply, :not_players_turn, game}
+        {:not_players_turn, game}
 
       game.drawn_card != nil ->
-        {:reply, :must_play_drawn_card, game}
+        {:must_play_drawn_card, game}
 
       game.called_ffc == {player, true} ->
-        {:reply, :called_ffc_before, game}
+        {:called_ffc_before, game}
 
       game.was_valid_wild4 != nil ->
-        {game, resp} =
-          {%Game{game | was_valid_wild4: nil}, []}
-          |> force_draw(player, 4)
-          |> advance_player()
-          |> turn_messages()
-
-        {:reply, resp, game}
+        {[], %Game{game | was_valid_wild4: nil}}
+        |> force_draw(player, 4)
+        |> advance_player()
+        |> turn_messages()
 
       game.cml_draw != nil ->
-        {game, resp} =
-          {%Game{game | cml_draw: nil}, []}
-          |> force_draw(player, game.cml_draw)
-          |> advance_player()
-          |> turn_messages()
-
-        {:reply, resp, game}
+        {[], %Game{game | cml_draw: nil}}
+        |> force_draw(player, game.cml_draw)
+        |> advance_player()
+        |> turn_messages()
 
       game.cml_draw == nil and game.drawn_card == nil and game.was_valid_wild4 == nil ->
-        {game, resp} = do_draw_self(game, player)
-        {:reply, resp, game}
+        do_draw_self(game, player)
     end
   end
 
-  @impl true
-  def handle_call({player, :pass}, _from, game) do
+  def pass(game, player) do
     cond do
       current_player(game) != player ->
-        {:reply, :not_players_turn, game}
+        {:not_players_turn, game}
 
       game.drawn_card == nil ->
-        {:reply, :cannot_pass, game}
+        {:cannot_pass, game}
 
       game.drawn_card != nil ->
-        {game, resp} = {%Game{game | drawn_card: nil}, []} |> advance_player() |> turn_messages()
-        {:reply, resp, game}
+        {[], %Game{game | drawn_card: nil}} |> advance_player() |> turn_messages()
     end
   end
 
-  @impl true
-  def handle_call({player, :ffc}, _from, game) do
+  def call_ffc(game, player) do
     hand = game.hands[player]
     can_play_a_card = Enum.any?(hand, &Card.can_play_on?(game.current_card, &1))
 
     cond do
       current_player(game) != player ->
-        {:reply, :not_players_turn, game}
+        {:not_players_turn, game}
 
       length(hand) != 2 or not can_play_a_card ->
-        {:reply, :cannot_call_ffc, game}
+        {:cannot_call_ffc, game}
 
       length(hand) == 2 and can_play_a_card ->
-        {:reply, {:called_ffc, player}, %Game{game | called_ffc: {player, true}}}
+        {{:called_ffc, player}, %Game{game | called_ffc: {player, true}}}
     end
   end
 
-  @impl true
-  def handle_call({player, :challenge}, _from, game) do
+  def challenge(game, player) do
     cond do
       current_player(game) != player ->
-        {:reply, :not_players_turn, game}
+        {:not_players_turn, game}
 
       game.was_valid_wild4 != nil ->
-        {game, resp} = wild4_challenge(game, player)
-        {:reply, resp, game}
+        wild4_challenge(game, player)
 
       match?({_, false}, game.called_ffc) and game.called_ffc != {player, false} ->
         {forgot_ffc, false} = game.called_ffc
         message = {:forgot_ffc_challenge, forgot_ffc, player}
-        {game, resp} = force_draw({game, [message]}, forgot_ffc, 2)
-        {:reply, resp, game}
+        force_draw({[message], game}, forgot_ffc, 2)
 
       true ->
-        {:reply, :cannot_ffc_challenge, game}
+        {:cannot_ffc_challenge, game}
     end
   end
 
-  @impl true
-  def handle_call(:start_game, _from, game) do
-    {game, resp} = turn_messages({game, [:welcome]})
-    {:reply, resp, game}
-  end
-
-  @impl true
-  def handle_call({player, :drop}, _from, game) do
-    {game, resp} = do_drop_player({game, []}, player)
-    {:reply, resp, game}
-  end
-
-  @spec do_drop_player({Game.t(), list() | atom()}, User.id()) :: {Game.t(), list()}
-  defp do_drop_player({game, resp}, player) do
+  def drop_player(game, player) do
     if player in game.players do
-      resp = [{:drop, player} | resp]
+      resp = [{:drop, player}]
 
       if Game.playercount_valid?(length(game.players) - 1) do
         was_current_player = current_player(game) == player
@@ -228,14 +178,14 @@ defmodule FfcEx.Game do
         {hand, hands} = Map.pop(game.hands, player)
         deck = Deck.put_back(game.deck, hand)
         game = %Game{game | players: players, hands: hands, deck: deck, drawn_card: nil}
-        if was_current_player, do: turn_messages({game, resp}), else: {game, resp}
+        if was_current_player, do: turn_messages({resp, game}), else: {resp, game}
       else
-        {game, [{:end, :not_enough_players} | resp]}
+        {[{:end, :not_enough_players} | resp], game}
       end
     end
   end
 
-  defp turn_messages({game, resps}) do
+  defp turn_messages({resps, game}) do
     current_player = current_player(game)
 
     resp_msg =
@@ -264,11 +214,10 @@ defmodule FfcEx.Game do
       ]
       |> Enum.filter(&Function.identity/1)
 
-    {game,
-     [
+    {[
        {resp_msg, current_player, game.hands[current_player], game.current_card, conditions}
        | resps
-     ]}
+     ], game}
   end
 
   defp do_play_card(game, player, {_, card_type} = card) do
@@ -276,16 +225,16 @@ defmodule FfcEx.Game do
 
     cond do
       !Deck.has_card?(player_hand, card) ->
-        {game, :dont_have_card}
+        {:dont_have_card, game}
 
       game.drawn_card != nil and !Card.equal_nw?(game.drawn_card, card) ->
-        {game, :must_play_drawn_card}
+        {:must_play_drawn_card, game}
 
       !Card.can_play_on?(game.current_card, card) ->
-        {game, :cannot_play_card}
+        {:cannot_play_card, game}
 
       game.cml_draw != nil and card_type != :draw2 ->
-        {game, :cml_draw_must_draw}
+        {:cml_draw_must_draw, game}
 
       (Card.can_play_on?(game.current_card, card) and game.cml_draw == nil) or
           (game.cml_draw != nil and card_type == :draw2) ->
@@ -301,7 +250,7 @@ defmodule FfcEx.Game do
 
     if Enum.empty?(new_hand) do
       # Victory condition
-      {game, [{:end, {:win, player}} | resp]}
+      {[{:end, {:win, player}} | resp], game}
     else
       resp =
         case card_special_message(game, card) do
@@ -309,32 +258,35 @@ defmodule FfcEx.Game do
           x -> [x | resp]
         end
 
-      game =
-        with {:wildcard_draw4, _} <- card do
-          # except other wild draw 4s!
-          can_play_other_cards =
-            new_hand
-            |> Enum.reject(&Card.equal_nw?(&1, {:wildcard_draw4, nil}))
-            |> Enum.any?(&Card.can_play_on?(game.current_card, &1))
-
-          %Game{game | was_valid_wild4: {player, !can_play_other_cards}}
+      called_ffc =
+        if length(new_hand) == 1 and !match?({^player, true}, game.called_ffc) do
+          {player, false}
         else
-          _ -> %Game{game | was_valid_wild4: nil}
+          nil
         end
+
+      game = check_valid_wild4(game, player, new_hand, card)
 
       new_hands = Map.put(game.hands, player, new_hand)
 
-      game = %Game{game | deck: new_deck, hands: new_hands, current_card: card}
-      {game, resp} = do_card_effect({game, resp}, card)
-
       game =
-        if length(new_hand) == 1 and !match?({^player, true}, game.called_ffc) do
-          %Game{game | called_ffc: {player, false}}
-        else
-          %Game{game | called_ffc: nil}
-        end
+        %Game{game | deck: new_deck, hands: new_hands, current_card: card, called_ffc: called_ffc}
 
-      turn_messages({game, resp})
+      {resp, game} |> do_card_effect(card) |> turn_messages()
+    end
+  end
+
+  defp check_valid_wild4(game, player, hand, card) do
+    with {:wildcard_draw4, _} <- card do
+      # except other wild draw 4s!
+      can_play_other_cards =
+        hand
+        |> Enum.reject(&Card.equal_nw?(&1, {:wildcard_draw4, nil}))
+        |> Enum.any?(&Card.can_play_on?(game.current_card, &1))
+
+      %Game{game | was_valid_wild4: {player, !can_play_other_cards}}
+    else
+      _ -> %Game{game | was_valid_wild4: nil}
     end
   end
 
@@ -355,7 +307,7 @@ defmodule FfcEx.Game do
 
     resp = [{:drew_card, drawn_card, player, can_play_drawn}]
 
-    {game, resp}
+    {resp, game}
   end
 
   defp wild4_challenge(game, challenging_player) do
@@ -365,9 +317,9 @@ defmodule FfcEx.Game do
     game = %Game{game | was_valid_wild4: nil}
 
     if was_valid? do
-      {game, resp} |> force_draw(challenging_player, 6) |> advance_player()
+      {resp, game} |> force_draw(challenging_player, 6) |> advance_player()
     else
-      {game, resp} |> force_draw(challenged_player, 4)
+      {resp, game} |> force_draw(challenged_player, 4)
     end
     |> turn_messages()
   end
@@ -388,41 +340,41 @@ defmodule FfcEx.Game do
     end
   end
 
-  defp do_card_effect({game, resp}, card) do
+  defp do_card_effect({resp, game}, card) do
     case card do
       {x, no} when Card.is_cardno(no) or Card.is_wildcard(x) ->
-        advance_player({game, resp})
+        advance_player({resp, game})
 
       {_, :skip} ->
-        advance_twice({game, resp})
+        advance_twice({resp, game})
 
       {_, :reverse} ->
         if length(game.players) == 2 do
-          {game, resp} |> reverse_playing_order() |> advance_player()
+          {resp, game} |> reverse_playing_order() |> advance_player()
         else
-          {game, resp} |> reverse_playing_order()
+          {resp, game} |> reverse_playing_order()
         end
 
       {_, :draw2} ->
         if :cumulative_draw in game.house_rules do
           cml_draw = if game.cml_draw == nil, do: 2, else: game.cml_draw + 2
-          advance_player({%Game{game | cml_draw: cml_draw}, resp})
+          advance_player({resp, %Game{game | cml_draw: cml_draw}})
         else
-          {game, resp} |> draw_next(2) |> advance_twice()
+          {resp, game} |> draw_next(2) |> advance_twice()
         end
     end
   end
 
-  defp draw_next({game, resp}, amt) do
+  defp draw_next({resp, game}, amt) do
     next_player = next_player(game)
-    force_draw({game, resp}, next_player, amt)
+    force_draw({resp, game}, next_player, amt)
   end
 
-  defp force_draw({game, resp}, player, amt) do
+  defp force_draw({resp, game}, player, amt) do
     resp = [{:force_draw, player, amt} | resp]
     {drawn, deck} = Deck.get_many(game.deck, amt)
     hands = Map.update!(game.hands, player, &(drawn ++ &1))
-    {%Game{game | deck: deck, hands: hands}, resp}
+    {resp, %Game{game | deck: deck, hands: hands}}
   end
 
   defp next_player(game) do
@@ -433,17 +385,17 @@ defmodule FfcEx.Game do
     hd(game.players)
   end
 
-  defp advance_player({game, resp}) do
+  defp advance_player({resp, game}) do
     [first | others] = game.players
     players = others ++ [first]
-    {%Game{game | players: players, drawn_card: nil}, resp}
+    {resp, %Game{game | players: players, drawn_card: nil}}
   end
 
   defp advance_twice(game_resp) do
     game_resp |> advance_player() |> advance_player()
   end
 
-  defp reverse_playing_order({game, resp}) do
-    {%Game{game | players: Enum.reverse(game.players)}, resp}
+  defp reverse_playing_order({resp, game}) do
+    {resp, %Game{game | players: Enum.reverse(game.players)}}
   end
 end

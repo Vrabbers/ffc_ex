@@ -35,13 +35,14 @@ defmodule FfcEx.GameResponder do
 
   @impl true
   def init(lobby) do
-    Process.flag(:trap_exit, true)
-    {:ok, game} = Game.start_link(lobby)
-    {:ok, %{players: lobby.players, spectators: lobby.spectators, game: game, id: lobby.id}}
+    game = Game.init(lobby)
+    {:ok, %{spectators: lobby.spectators, game: game, id: lobby.id}}
   end
 
   @impl true
   def terminate(reason, responder) do
+    # Although :shutdown and {:shutdown, _} are also 'normal' reasons, they indicate that this
+    # decision to end the process did not arrive from myself, so we still inform the participants
     if reason != :normal do
       Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
         Broadcaster.broadcast_to(
@@ -56,15 +57,6 @@ defmodule FfcEx.GameResponder do
   end
 
   @impl true
-  def handle_info({:EXIT, pid, reason}, responder) do
-    if pid == responder.game do
-      Logger.debug("Game \##{responder.id} exited for: #{inspect(reason)}. Responder exiting")
-    end
-
-    {:stop, reason, responder}
-  end
-
-  @impl true
   def handle_call(:start_game, _from, responder) do
     responses =
       for user <- participants(responder) do
@@ -74,36 +66,19 @@ defmodule FfcEx.GameResponder do
 
     if Enum.all?(responses, fn {{resp, _}, _} -> resp == :ok end) do
       PlayerRouter.add_all_to(participants(responder), responder.id)
-      {:reply, {:ok, respond(Game.start_game(responder.game), responder)}, responder}
+      {resp, game} = Game.start_game(responder.game)
+      responder = %{responder | game: game}
+      {:reply, {:ok, respond(resp, responder)}, responder}
     else
-      Process.exit(responder.game, :kill)
-      {:stop, :normal, {:cannot_dm, for({{:error, _}, user} <- responses, do: user)}, responder}
-    end
-  end
-
-  @impl true
-  def handle_call({:cmd, uid, :hand}, _from, responder) do
-    if uid in responder.players do
-      current_card = Game.current_card(responder.game)
-      hand = Game.hand(responder.game, uid)
-
-      embed =
-        %Embed{
-          title: "Your hand",
-          description: formatted_hand(hand, current_card)
-        }
-        |> footer_color(responder)
-
-      {:reply, tell(uid, embeds: [embed]), responder}
-    else
-      {:reply, tell(uid, "You don't have a hand!"), responder}
+      {:stop, :cannot_dm, {:cannot_dm, for({{:error, _}, user} <- responses, do: user)},
+       responder}
     end
   end
 
   @impl true
   def handle_call({:cmd, uid, {:chat, message}}, _from, responder) do
     str =
-      if uid in responder.players do
+      if uid in responder.game.players do
         "*\##{responder.id}* **#{Format.uname(uid)}:** #{message}"
       else
         "*\##{responder.id} Spectator #{Format.uname(uid)}:* #{message}"
@@ -135,35 +110,83 @@ defmodule FfcEx.GameResponder do
   end
 
   @impl true
-  def handle_call({:cmd, uid, {:play, card_str}}, _from, responder) do
-    case Card.parse(card_str) do
-      :error ->
-        {:reply, tell(uid, "Invalid card."), responder}
+  def handle_call({:cmd, uid, :hand}, _from, responder) do
+    if uid in responder.game.players do
+      current_card = responder.game.current_card
+      hand = responder.game.hand[uid]
 
-      {:ok, {_, nil}} ->
-        {:reply, tell(uid, "Please specify a wildcard color!"), responder}
+      embed =
+        %Embed{
+          title: "Your hand",
+          description: formatted_hand(hand, current_card)
+        }
+        |> footer_color(responder)
 
-      {:ok, card} ->
-        resp = GenServer.call(responder.game, {uid, {:play, card}})
-
-        if is_list(resp) and Enum.any?(resp, fn r -> match?({:end, {:win, _}}, r) end) do
-          # Victory!
-          {:stop, :normal, respond(resp, responder), responder}
-        else
-          {:reply, respond(resp, responder), responder}
-        end
+      {:reply, tell(uid, embeds: [embed]), responder}
+    else
+      {:reply, tell(uid, "You don't have a hand!"), responder}
     end
   end
 
   @impl true
-  def handle_call({:cmd, uid, command}, _from, responder) do
-    resp = GenServer.call(responder.game, {uid, command})
-    {:reply, respond(resp, responder), responder}
+  def handle_call({:cmd, uid, {:play, card_str}}, _from, responder) do
+    if uid in responder.game.players do
+      case Card.parse(card_str) do
+        :error ->
+          {:reply, tell(uid, "Invalid card."), responder}
+
+        {:ok, {_, nil}} ->
+          {:reply, tell(uid, "Please specify a wildcard color!"), responder}
+
+        {:ok, card} ->
+          {resp, game} = Game.play(responder.game, uid, card)
+          responder = %{responder | game: game}
+
+          if is_list(resp) and Enum.any?(resp, fn r -> match?({:end, {:win, _}}, r) end) do
+            # Victory!
+            {:stop, :normal, respond(resp, responder), responder}
+          else
+            {:reply, respond(resp, responder), responder}
+          end
+      end
+    else
+      {:reply, tell(uid, "You are not playing in this game."), responder}
+    end
+  end
+
+  @impl true
+  def handle_call({:cmd, uid, :draw}, _from, responder) do
+    do_player_command(responder, uid, &Game.draw/2)
+  end
+
+  @impl true
+  def handle_call({:cmd, uid, :pass}, _from, responder) do
+    do_player_command(responder, uid, &Game.pass/2)
+  end
+
+  @impl true
+  def handle_call({:cmd, uid, :challenge}, _from, responder) do
+    do_player_command(responder, uid, &Game.challenge/2)
+  end
+
+  @impl true
+  def handle_call({:cmd, uid, :ffc}, _from, responder) do
+    do_player_command(responder, uid, &Game.call_ffc/2)
   end
 
   @impl true
   def handle_call({:part_of?, uid}, _from, responder) do
     {:reply, uid in participants(responder), responder}
+  end
+
+  defp do_player_command(responder, uid, fun) do
+    if uid in responder.game.players do
+      {resp, game} = fun.(responder.game, uid)
+      responder = %{responder | game: game}
+      {:reply, respond(resp, responder), responder}
+    else
+      {:reply, tell(uid, "You are not playing in this game."), responder}
+    end
   end
 
   defp respond(terms, responder) when is_list(terms) do
@@ -212,7 +235,7 @@ defmodule FfcEx.GameResponder do
       embeds: [
         %Embed{
           title: "Card played!",
-          description: "#{Format.uname(player)} has played a **#{Card.to_string(card)}**"
+          description: "#{Format.uname(player)} has played **#{Card.to_string(card)}**"
         }
         |> footer_color(responder)
       ]
@@ -310,7 +333,7 @@ defmodule FfcEx.GameResponder do
   end
 
   defp participants(responder) do
-    responder.players ++ responder.spectators
+    responder.game.players ++ responder.spectators
   end
 
   defp broadcast(responder, message) do

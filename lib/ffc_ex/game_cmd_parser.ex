@@ -11,44 +11,19 @@ defmodule FfcEx.GameCmdParser do
 
     result =
       case split do
-        ["hand"] ->
-          :hand
-
-        ["status"] ->
-          :status
-
-        ["draw"] ->
-          :draw
-
-        ["pass"] ->
-          :pass
-
-        ["nudge"] ->
-          :nudge
-
-        ["help"] ->
-          :help
-
-        ["ffc"] ->
-          :ffc
-
-        ["!"] ->
-          :challenge
-
-        ["drop"] ->
-          :drop
-
-        ["spectate"] ->
-          :spectate
-
-        ["chat", arg] ->
-          {:chat, arg}
-
-        ["play", card] ->
-          {:play, card}
-
-        _ ->
-          {:chat, rest}
+        ["hand"] -> :hand
+        ["status"] -> :status
+        ["draw"] -> :draw
+        ["pass"] -> :pass
+        ["nudge"] -> :nudge
+        ["help"] -> :help
+        ["ffc"] -> :ffc
+        ["!"] -> :challenge
+        ["drop"] -> :drop
+        ["spectate"] -> :spectate
+        ["chat", arg] -> {:chat, arg}
+        ["play", card] -> {:play, card}
+        _ -> {:chat, rest}
       end
 
     {game_id, result}
