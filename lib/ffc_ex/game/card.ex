@@ -10,8 +10,8 @@ defmodule FfcEx.Game.Card do
   defguard is_color(col) when col in [:red, :green, :yellow, :blue]
   defguard is_wildcard(wild) when wild in [:wildcard, :wildcard_draw4]
 
-  @spec is_valid_first_card?(t()) :: boolean()
-  def is_valid_first_card?(card) do
+  @spec valid_first_card?(t()) :: boolean()
+  def valid_first_card?(card) do
     case card do
       {_first, second} when is_cardno(second) -> true
       _ -> false

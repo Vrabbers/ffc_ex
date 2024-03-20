@@ -139,15 +139,7 @@ defmodule FfcEx.GameResponder do
           {:reply, tell(uid, "Please specify a wildcard color!"), responder}
 
         {:ok, card} ->
-          {resp, game} = Game.play(responder.game, uid, card)
-          responder = %{responder | game: game}
-
-          if is_list(resp) and Enum.any?(resp, fn r -> match?({:end, {:win, _}}, r) end) do
-            # Victory!
-            {:stop, :normal, respond(resp, responder), responder}
-          else
-            {:reply, respond(resp, responder), responder}
-          end
+          do_play_card(responder, uid, card)
       end
     else
       {:reply, tell(uid, "You are not playing in this game."), responder}
@@ -186,6 +178,18 @@ defmodule FfcEx.GameResponder do
       {:reply, respond(resp, responder), responder}
     else
       {:reply, tell(uid, "You are not playing in this game."), responder}
+    end
+  end
+
+  defp do_play_card(responder, uid, card) do
+    {resp, game} = Game.play(responder.game, uid, card)
+    responder = %{responder | game: game}
+
+    if is_list(resp) and Enum.any?(resp, fn r -> match?({:end, {:win, _}}, r) end) do
+      # Victory!
+      {:stop, :normal, respond(resp, responder), responder}
+    else
+      {:reply, respond(resp, responder), responder}
     end
   end
 

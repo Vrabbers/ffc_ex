@@ -39,7 +39,7 @@ defmodule FfcEx.Game do
 
   def init(lobby) do
     deck = Deck.new()
-    {last, deck} = Deck.get_matching(deck, &Card.is_valid_first_card?/1)
+    {last, deck} = Deck.get_matching(deck, &Card.valid_first_card?/1)
     {groups, deck} = Deck.get_many_groups(deck, 7, length(lobby.players))
     hands = Enum.zip(lobby.players, groups) |> Map.new()
 
@@ -89,7 +89,7 @@ defmodule FfcEx.Game do
         {:resolve_wild4_challenge, game}
 
       game.was_valid_wild4 == nil ->
-        do_play_card(game, player, card)
+        play_card(game, player, card)
     end
   end
 
@@ -220,7 +220,7 @@ defmodule FfcEx.Game do
      ], game}
   end
 
-  defp do_play_card(game, player, {_, card_type} = card) do
+  defp play_card(game, player, {_, card_type} = card) do
     player_hand = game.hands[player]
 
     cond do
@@ -236,10 +236,16 @@ defmodule FfcEx.Game do
       game.cml_draw != nil and card_type != :draw2 ->
         {:cml_draw_must_draw, game}
 
-      (Card.can_play_on?(game.current_card, card) and game.cml_draw == nil) or
-          (game.cml_draw != nil and card_type == :draw2) ->
+       valid_to_play_card?(game, card) ->
         play_card_turn_messages(game, card, player)
     end
+  end
+
+  defp valid_to_play_card?(game, card) do
+    {_, card_type} = card
+    no_cml_draw_condition = Card.can_play_on?(game.current_card, card) and game.cml_draw == nil
+    cml_drawing_condition = game.cml_draw != nil and card_type == :draw2
+    no_cml_draw_condition or cml_drawing_condition
   end
 
   defp play_card_turn_messages(game, card, player) do
@@ -277,16 +283,18 @@ defmodule FfcEx.Game do
   end
 
   defp check_valid_wild4(game, player, hand, card) do
-    with {:wildcard_draw4, _} <- card do
-      # except other wild draw 4s!
-      can_play_other_cards =
-        hand
-        |> Enum.reject(&Card.equal_nw?(&1, {:wildcard_draw4, nil}))
-        |> Enum.any?(&Card.can_play_on?(game.current_card, &1))
+    case card do
+      {:wildcard_draw4, _} ->
+        # except other wild draw 4s!
+        can_play_other_cards =
+          hand
+          |> Enum.reject(&Card.equal_nw?(&1, {:wildcard_draw4, nil}))
+          |> Enum.any?(&Card.can_play_on?(game.current_card, &1))
 
-      %Game{game | was_valid_wild4: {player, !can_play_other_cards}}
-    else
-      _ -> %Game{game | was_valid_wild4: nil}
+        %Game{game | was_valid_wild4: {player, !can_play_other_cards}}
+
+      _ ->
+        %Game{game | was_valid_wild4: nil}
     end
   end
 
@@ -357,11 +365,18 @@ defmodule FfcEx.Game do
 
       {_, :draw2} ->
         if :cumulative_draw in game.house_rules do
-          cml_draw = if game.cml_draw == nil, do: 2, else: game.cml_draw + 2
+          cml_draw = inc_cml_draw(game.cml_draw)
           advance_player({resp, %Game{game | cml_draw: cml_draw}})
         else
           {resp, game} |> draw_next(2) |> advance_twice()
         end
+    end
+  end
+
+  defp inc_cml_draw(cml_draw) do
+    case cml_draw do
+      nil -> 2
+      x -> x + 2
     end
   end
 

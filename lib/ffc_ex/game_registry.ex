@@ -11,9 +11,8 @@ defmodule FfcEx.GameRegistry do
 
   @spec get_game_responder(Lobby.id()) :: pid() | nil
   def get_game_responder(id) do
-    with [{pid, nil}] <- Registry.lookup(__MODULE__, id) do
-      pid
-    else
+    case Registry.lookup(__MODULE__, id) do
+      [{pid, _}] -> pid
       _ -> nil
     end
   end
