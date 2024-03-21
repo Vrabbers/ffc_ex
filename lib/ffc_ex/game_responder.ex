@@ -84,7 +84,7 @@ defmodule FfcEx.GameResponder do
         "*\##{responder.id} Spectator #{Format.uname(uid)}:* #{message}"
       end
 
-    {:reply, {:send_chat_message, broadcast_except(responder, [uid], str)}, responder}
+    {:reply, {:green_check, broadcast_except(responder, [uid], str)}, responder}
   end
 
   @impl true
@@ -147,6 +147,59 @@ defmodule FfcEx.GameResponder do
   end
 
   @impl true
+  def handle_call({:cmd, uid, :nudge}, _from, responder) do
+    [current_player | _] = responder.game.players
+
+    if current_player == uid do
+      {:reply, tell(uid, "It's your turn right now! Go nudge yourself!"), responder}
+    else
+      response =
+        tell(
+          current_player,
+          """
+          #{Format.uname(uid)} wished to remind you it's your turn to play by giving you a gentle \
+          nudge. *Nudge!*
+          """
+        )
+
+      {:reply, {:green_check, response}, responder}
+    end
+  end
+
+  @impl true
+  def handle_call({:cmd, uid, :help}, _from, responder) do
+    embed =
+      %Embed{
+        title: "Help",
+        description:
+          "[Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)"
+      }
+      |> footer_color(responder)
+
+    {:reply, tell(uid, embeds: embed), responder}
+  end
+
+  @impl true
+  def handle_call({:cmd, uid, :drop}, _from, responder) do
+    if uid in responder.game.players do
+      do_drop_player(responder, uid)
+    else
+      {:reply, tell(uid, "You have stopped spectating the game."),
+       %{responder | spectators: responder.spectators -- [uid]}}
+    end
+  end
+
+  @impl true
+  def handle_call({:cmd, uid, :spectate}, _from, responder) do
+    if uid in responder.game.players do
+      responder = %{responder | spectators: [uid | responder.spectators]}
+      do_drop_player(responder, uid)
+    else
+      {:reply, tell(uid, "You are already spectating the game."), responder}
+    end
+  end
+
+  @impl true
   def handle_call({:cmd, uid, :draw}, _from, responder) do
     do_player_command(responder, uid, &Game.draw/2)
   end
@@ -185,8 +238,20 @@ defmodule FfcEx.GameResponder do
     {resp, game} = Game.play(responder.game, uid, card)
     responder = %{responder | game: game}
 
-    if is_list(resp) and Enum.any?(resp, fn r -> match?({:end, {:win, _}}, r) end) do
+    if is_list(resp) and Enum.any?(resp, fn r -> match?({:end, _}, r) end) do
       # Victory!
+      {:stop, :normal, respond(resp, responder), responder}
+    else
+      {:reply, respond(resp, responder), responder}
+    end
+  end
+
+  defp do_drop_player(responder, uid) do
+    {resp, game} = Game.drop_player(responder.game, uid)
+    responder = %{responder | game: game}
+
+    if is_list(resp) and Enum.any?(resp, fn r -> match?({:end, _}, r) end) do
+      # Stop game, not enough players.
       {:stop, :normal, respond(resp, responder), responder}
     else
       {:reply, respond(resp, responder), responder}
@@ -213,7 +278,7 @@ defmodule FfcEx.GameResponder do
     broadcast(responder, embeds: [embed])
   end
 
-  defp respond({:normal_turn, turns_uid, turns_hand, card, conditions}, responder) do
+  defp respond({:normal_turn, uid, hand, card, conditions}, responder) do
     embed =
       %Embed{
         title: "Your turn!",
@@ -222,15 +287,64 @@ defmodule FfcEx.GameResponder do
         ]
       }
       |> footer_color(responder)
-      |> put_cond_fields(conditions, turns_hand, card)
+      |> put_cond_fields(conditions, hand, card)
 
     [
-      tell(turns_uid, embeds: [embed]),
-      broadcast_except(
-        responder,
-        [turns_uid],
-        "*##{responder.id} – #{Format.uname(turns_uid)}'s turn*"
-      )
+      tell(uid, embeds: [embed]),
+      global_turn_msg(responder, uid)
+    ]
+  end
+
+  defp respond({{:wild4_challenge_turn, challenged}, uid, _hand, _card, _cond}, responder) do
+    embed =
+      %Embed{
+        title: "Wild Draw 4 challenge",
+        description: """
+        #{Format.uname(challenged)} has played a Wild Draw 4. If you think it was played \
+        illegally, use `!` to challenge their decision. Use `draw` to accept and draw 4 cards.
+        *If you lose the challenge, you draw 6 cards. If you win, they draw 4 cards.*
+        """
+      }
+      |> footer_color(responder)
+
+    [
+      tell(uid, embeds: [embed]),
+      global_turn_msg(responder, uid)
+    ]
+  end
+
+  defp respond({{:cml_draw_turn, cml_draw}, uid, hand, card, conditions}, responder) do
+    draw2_cards =
+      hand
+      |> Enum.filter(fn {_, el} -> el == :draw2 end)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.map_join(", ", &"`play #{Card.to_string(&1)}`")
+
+    desc =
+      if draw2_cards == "" do
+        """
+        Because you have no Draw 2 cards, you have to draw the #{cml_draw} \
+        accumulated cards with `draw`.
+        """
+      else
+        """
+        This turn, you must play a Draw 2 card with #{draw2_cards} or draw the \
+        #{cml_draw} accumulated cards with `draw`
+        """
+      end
+
+    embed =
+      %Embed{
+        title: "Your turn!",
+        description: desc
+      }
+      |> footer_color(responder)
+      |> put_cond_fields(conditions, hand, card)
+
+    [
+      tell(uid, embeds: [embed]),
+      global_turn_msg(responder, uid)
     ]
   end
 
@@ -285,9 +399,168 @@ defmodule FfcEx.GameResponder do
     [author_message, everyone_message]
   end
 
-  defp respond(term, responder) do
-    Logger.warning("Unknown term #{inspect(term)} in game #{responder.id} to respond to.")
-    broadcast(responder, "#{responder.id}: #{inspect(term)}")
+  defp respond({:skip, uid}, responder) do
+    broadcast(responder,
+      embeds: [
+        %Embed{
+          title: "Turn skipped!",
+          description: "#{Format.uname(uid)}'s turn has been skipped!",
+          thumbnail: %Thumbnail{url: "attachment://skip.png"}
+        }
+        |> footer_color(responder)
+      ],
+      files: [PrivDir.file("skip.png")]
+    )
+  end
+
+  defp respond(:play_reversed, responder) do
+    broadcast(responder,
+      embeds: [
+        %Embed{
+          title: "Play reversed!",
+          description: "The direction of play has been reversed.",
+          thumbnail: %Thumbnail{url: "attachment://reverse.png"}
+        }
+        |> footer_color(responder)
+      ],
+      files: [PrivDir.file("reverse.png")]
+    )
+  end
+
+  defp respond({:color_changed, color}, responder) do
+    broadcast(responder,
+      embeds: [
+        %Embed{
+          title: "Color changed!",
+          description: "The color has changed to **#{color}**.",
+          thumbnail: %Thumbnail{url: "attachment://#{color}.png"}
+        }
+        |> footer_color(responder)
+      ],
+      files: [PrivDir.file("#{color}.png")]
+    )
+  end
+
+  defp respond({:force_draw, uid, amt}, responder) do
+    file =
+      case amt do
+        2 -> "draw2.png"
+        4 -> "draw4.png"
+        6 -> "draw6.png"
+        _ -> "draw.png"
+      end
+
+    broadcast(responder,
+      embeds: [
+        %Embed{
+          title: "Drawn cards",
+          description: "#{Format.uname(uid)} has been forced to draw #{amt} cards!",
+          thumbnail: %Thumbnail{url: "attachment://#{file}"}
+        }
+        |> footer_color(responder)
+      ],
+      files: [PrivDir.file(file)]
+    )
+  end
+
+  defp respond({:called_ffc, uid}, responder) do
+    broadcast(responder,
+      embeds: [
+        %Embed{
+          title: "FFC",
+          description: "**#{Format.uname(uid)} has called FFC!**"
+        }
+        |> footer_color(responder)
+      ]
+    )
+  end
+
+  defp respond({:forgot_ffc_challenge, forgot, challenger}, responder) do
+    broadcast(responder,
+      embeds: [
+        %Embed{
+          title: "FFC challenged!",
+          description:
+            "#{Format.uname(forgot)} forgot to call FFC and #{Format.uname(challenger)} has challenged them!"
+        }
+        |> footer_color(responder)
+      ]
+    )
+  end
+
+  defp respond({:drop, uid}, responder) do
+    broadcast(responder, "*\##{responder.id}* - #{Format.uname(uid)} has dropped from the game.")
+  end
+
+  defp respond({:end, {:win, uid}}, responder) do
+    author_img_url = User.avatar_url(Api.get_user!(uid))
+
+    broadcast(
+      responder,
+      embeds: [
+        %Embed{
+          title: "Victory!",
+          description: "#{Format.uname(uid)} has won the game!",
+          thumbnail: %Thumbnail{url: author_img_url}
+        }
+        |> footer_color(responder)
+      ]
+    )
+  end
+
+  defp respond({:wild4_challenge, challenged, challenger, won?}, responder) do
+    broadcast(responder,
+      embeds: [
+        %Embed{
+          title: "Wild Draw 4 challenge",
+          description: """
+          #{Format.uname(challenger)} has challenged the Wild Draw Four played \
+          by #{Format.uname(challenged)}, and has #{if won?, do: "won", else: "lost"} \
+          the challenge.
+          """
+        }
+        |> footer_color(responder)
+      ]
+    )
+  end
+
+  defp respond({:end, :not_enough_players}, responder) do
+    broadcast(
+      responder,
+      "Game \##{responder.id} has ended as there weren't enough players to continue."
+    )
+  end
+
+  defp respond(:not_players_turn, _responder) do
+    tell(:author, "You can't do this when it's not your turn!")
+  end
+
+  defp respond(:dont_have_card, _responder) do
+    tell(:author, "You don't have that card.")
+  end
+
+  defp respond(:resolve_wild4_challenge, _responder) do
+    tell(:author, "You must resolve the Wild Draw 4 challenge.")
+  end
+
+  defp respond(:must_play_drawn_card, _responder) do
+    tell(:author, "You must play the card you have drawn!")
+  end
+
+  defp respond(:cannot_play_card, _responder) do
+    tell(:author, "You can't play that card now. Cards you can play are marked in **bold**.")
+  end
+
+  defp respond(:cml_draw_must_draw, _responder) do
+    tell(:author, "You must draw or play a Draw 2 card.")
+  end
+
+  defp respond(:cannot_ffc_challenge, _responder) do
+    tell(:author, "There is nothing to challenge right now!")
+  end
+
+  defp respond(:cannot_pass, _responder) do
+    tell(:author, "You can't pass if you haven't drawn a card from the deck first.")
   end
 
   defp put_cond_fields(embed, conditions, hand, current_card) do
@@ -328,6 +601,14 @@ defmodule FfcEx.GameResponder do
         {card, true} -> "**__#{card}__**"
         {card, false} -> card
       end
+    )
+  end
+
+  defp global_turn_msg(responder, uid) do
+    broadcast_except(
+      responder,
+      [uid],
+      "*##{responder.id} – #{Format.uname(uid)}'s turn*"
     )
   end
 

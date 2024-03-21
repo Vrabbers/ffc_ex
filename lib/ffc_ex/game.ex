@@ -190,15 +190,26 @@ defmodule FfcEx.Game do
 
     resp_msg =
       cond do
-        game.was_valid_wild4 != nil -> :wild4_challenge_turn
-        game.cml_draw != nil -> :cml_draw_turn
-        game.was_valid_wild4 == nil and game.cml_draw == nil -> :normal_turn
+        game.was_valid_wild4 != nil ->
+          {challenged_player, _} = game.was_valid_wild4
+          {:wild4_challenge_turn, challenged_player}
+
+        game.cml_draw != nil ->
+          {:cml_draw_turn, game.cml_draw}
+
+        game.was_valid_wild4 == nil and game.cml_draw == nil ->
+          :normal_turn
       end
 
     must_draw = !Enum.any?(game.hands[current_player], &Card.can_play_on?(game.current_card, &1))
 
     conditions =
       [
+        if game.cml_draw != nil do
+          {:cml_draw, game.cml_draw}
+        else
+          nil
+        end,
         if must_draw and game.cml_draw == nil do
           :must_draw
         else
@@ -236,7 +247,7 @@ defmodule FfcEx.Game do
       game.cml_draw != nil and card_type != :draw2 ->
         {:cml_draw_must_draw, game}
 
-       valid_to_play_card?(game, card) ->
+      valid_to_play_card?(game, card) ->
         play_card_turn_messages(game, card, player)
     end
   end

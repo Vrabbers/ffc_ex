@@ -33,6 +33,7 @@ defmodule FfcEx.Broadcaster do
       else
         user_id
       end
+
     Task.Supervisor.async(FfcEx.TaskSupervisor, fn -> do_send_to(id, message) end)
   end
 
@@ -42,6 +43,12 @@ defmodule FfcEx.Broadcaster do
 
   defp do_send_to(user_id, message) do
     {:ok, channel} = DmCache.create(user_id)
+
+    if is_list(message) do
+      file = Keyword.fetch(message, :files)
+      IO.inspect(file)
+    end
+
     Api.create_message!(channel, message)
   end
 end

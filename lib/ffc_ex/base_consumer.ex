@@ -41,7 +41,7 @@ defmodule FfcEx.BaseConsumer do
       end
 
       case GameResponder.command(game, msg.author.id, cmd) do
-        {:send_chat_message, term} ->
+        {:green_check, term} ->
           Broadcaster.send_messages(term, msg.author.id)
           Api.create_reaction!(msg.channel_id, msg.id, "✅")
 
