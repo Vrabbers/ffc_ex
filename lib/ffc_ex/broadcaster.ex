@@ -1,6 +1,6 @@
 defmodule FfcEx.Broadcaster do
+  alias FfcEx.ThumbnailCache
   alias FfcEx.DmCache
-  alias Nostrum.Api
 
   def tell(user_id, message) do
     send_messages({:tell, user_id, message}, :no_author)
@@ -44,11 +44,10 @@ defmodule FfcEx.Broadcaster do
   defp do_send_to(user_id, message) do
     {:ok, channel} = DmCache.create(user_id)
 
-    if is_list(message) do
-      file = Keyword.fetch(message, :files)
-      IO.inspect(file)
+    if Keyword.keyword?(message) do
+      ThumbnailCache.send_with_thumbnail_caching!(channel, message)
+    else
+      Nostrum.Api.create_message!(channel, message)
     end
-
-    Api.create_message!(channel, message)
   end
 end

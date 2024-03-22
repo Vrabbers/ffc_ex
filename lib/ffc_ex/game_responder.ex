@@ -113,7 +113,7 @@ defmodule FfcEx.GameResponder do
   def handle_call({:cmd, uid, :hand}, _from, responder) do
     if uid in responder.game.players do
       current_card = responder.game.current_card
-      hand = responder.game.hand[uid]
+      hand = responder.game.hands[uid]
 
       embed =
         %Embed{
@@ -376,11 +376,10 @@ defmodule FfcEx.GameResponder do
           %Embed{
             title: "Card drawn",
             description: "You have drawn **#{Card.to_string(card)}**.\n" <> personal_message,
-            thumbnail: %Thumbnail{url: "attachment://draw.png"}
           }
           |> footer_color(responder)
         ],
-        files: [PrivDir.file("draw.png")]
+        files: [{:add_thumbnail, PrivDir.file("draw.png")}]
       )
 
     everyone_message =
@@ -389,11 +388,10 @@ defmodule FfcEx.GameResponder do
           %Embed{
             title: "Card drawn",
             description: "#{Format.uname(player)} has drawn a card from the deck.",
-            thumbnail: %Thumbnail{url: "attachment://draw.png"}
           }
           |> footer_color(responder)
         ],
-        files: [PrivDir.file("draw.png")]
+        files: [{:add_thumbnail, PrivDir.file("draw.png")}]
       )
 
     [author_message, everyone_message]
@@ -405,11 +403,10 @@ defmodule FfcEx.GameResponder do
         %Embed{
           title: "Turn skipped!",
           description: "#{Format.uname(uid)}'s turn has been skipped!",
-          thumbnail: %Thumbnail{url: "attachment://skip.png"}
         }
         |> footer_color(responder)
       ],
-      files: [PrivDir.file("skip.png")]
+      files: [{:add_thumbnail, PrivDir.file("skip.png")}]
     )
   end
 
@@ -419,11 +416,10 @@ defmodule FfcEx.GameResponder do
         %Embed{
           title: "Play reversed!",
           description: "The direction of play has been reversed.",
-          thumbnail: %Thumbnail{url: "attachment://reverse.png"}
         }
         |> footer_color(responder)
       ],
-      files: [PrivDir.file("reverse.png")]
+      files: [{:add_thumbnail, PrivDir.file("reverse.png")}]
     )
   end
 
@@ -433,11 +429,10 @@ defmodule FfcEx.GameResponder do
         %Embed{
           title: "Color changed!",
           description: "The color has changed to **#{color}**.",
-          thumbnail: %Thumbnail{url: "attachment://#{color}.png"}
         }
         |> footer_color(responder)
       ],
-      files: [PrivDir.file("#{color}.png")]
+      files: [{:add_thumbnail, PrivDir.file("#{color}.png")}]
     )
   end
 
@@ -455,11 +450,10 @@ defmodule FfcEx.GameResponder do
         %Embed{
           title: "Drawn cards",
           description: "#{Format.uname(uid)} has been forced to draw #{amt} cards!",
-          thumbnail: %Thumbnail{url: "attachment://#{file}"}
         }
         |> footer_color(responder)
       ],
-      files: [PrivDir.file(file)]
+      files: [{:add_thumbnail, PrivDir.file(file)}]
     )
   end
 

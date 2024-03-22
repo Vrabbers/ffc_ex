@@ -24,7 +24,7 @@ defmodule FfcEx.MixProject do
   defp deps do
     [
       {:nostrum, "~> 0.8"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
     ]
   end
 end
