@@ -14,3 +14,7 @@ config :nostrum,
     :direct_messages,
     :message_content
   ]
+
+config :hammer,
+  backend:
+    {Hammer.Backend.ETS, [expiry_ms: :timer.minutes(10), cleanup_interval_ms: :timer.minutes(2)]}

@@ -20,7 +20,13 @@ defmodule FfcEx.GameResponder do
   end
 
   def command(pid, uid, command) do
-    GenServer.call(pid, {:cmd, uid, command})
+    case Hammer.check_rate("game_cmd:#{uid}", :timer.seconds(10), 5) do
+      {:allow, _} ->
+        GenServer.call(pid, {:cmd, uid, command})
+
+      {:deny, _} ->
+        :ratelimited
+    end
   end
 
   def part_of?(pid, uid) do
@@ -77,14 +83,18 @@ defmodule FfcEx.GameResponder do
 
   @impl true
   def handle_call({:cmd, uid, {:chat, message}}, _from, responder) do
-    str =
-      if uid in responder.game.players do
-        "*\##{responder.id}* **#{Format.uname(uid)}:** #{message}"
-      else
-        "*\##{responder.id} Spectator #{Format.uname(uid)}:* #{message}"
-      end
+    if String.length(message) > 200 or too_many_newlines?(message) do
+      {:reply, :chat_too_long, responder}
+    else
+      str =
+        if(uid in responder.game.players) do
+          "*\##{responder.id}* **#{Format.uname(uid)}:** #{message}"
+        else
+          "*\##{responder.id} Spectator #{Format.uname(uid)}:* #{message}"
+        end
 
-    {:reply, {:green_check, broadcast_except(responder, [uid], str)}, responder}
+      {:reply, {:green_check, broadcast_except(responder, [uid], str)}, responder}
+    end
   end
 
   @impl true
@@ -135,8 +145,13 @@ defmodule FfcEx.GameResponder do
         :error ->
           {:reply, tell(uid, "Invalid card."), responder}
 
-        {:ok, {_, nil}} ->
-          {:reply, tell(uid, "Please specify a wildcard color!"), responder}
+        {:ok, {wild, nil}} ->
+          {:reply,
+           tell(
+             uid,
+             "Please specify a wildcard color! For example, if you want to change the color of" <>
+               " play to blue, type `play #{Card.to_string({wild, :blue})}`."
+           ), responder}
 
         {:ok, card} ->
           do_play_card(responder, uid, card)
@@ -224,6 +239,24 @@ defmodule FfcEx.GameResponder do
     {:reply, uid in participants(responder), responder}
   end
 
+  defp too_many_newlines?(string) do
+    rec_too_many_newlines(string, 0)
+  end
+
+  @max_newlines 3
+
+  defp rec_too_many_newlines(_, acc) when acc > @max_newlines, do: true
+
+  defp rec_too_many_newlines(<<char::utf8, rest::binary>>, acc) do
+    if char == ?\n do
+      rec_too_many_newlines(rest, acc + 1)
+    else
+      rec_too_many_newlines(rest, acc)
+    end
+  end
+
+  defp rec_too_many_newlines(<<>>, acc) when acc <= @max_newlines, do: false
+
   defp do_player_command(responder, uid, fun) do
     if uid in responder.game.players do
       {resp, game} = fun.(responder.game, uid)
@@ -250,7 +283,7 @@ defmodule FfcEx.GameResponder do
     {resp, game} = Game.drop_player(responder.game, uid)
     responder = %{responder | game: game}
 
-    if is_list(resp) and Enum.any?(resp, fn r -> match?({:end, _}, r) end) do
+    if Enum.any?(resp, fn r -> match?({:end, _}, r) end) do
       # Stop game, not enough players.
       {:stop, :normal, respond(resp, responder), responder}
     else
@@ -375,7 +408,7 @@ defmodule FfcEx.GameResponder do
         embeds: [
           %Embed{
             title: "Card drawn",
-            description: "You have drawn **#{Card.to_string(card)}**.\n" <> personal_message,
+            description: "You have drawn **#{Card.to_string(card)}**.\n" <> personal_message
           }
           |> footer_color(responder)
         ],
@@ -387,7 +420,7 @@ defmodule FfcEx.GameResponder do
         embeds: [
           %Embed{
             title: "Card drawn",
-            description: "#{Format.uname(player)} has drawn a card from the deck.",
+            description: "#{Format.uname(player)} has drawn a card from the deck."
           }
           |> footer_color(responder)
         ],
@@ -402,7 +435,7 @@ defmodule FfcEx.GameResponder do
       embeds: [
         %Embed{
           title: "Turn skipped!",
-          description: "#{Format.uname(uid)}'s turn has been skipped!",
+          description: "#{Format.uname(uid)}'s turn has been skipped!"
         }
         |> footer_color(responder)
       ],
@@ -415,7 +448,7 @@ defmodule FfcEx.GameResponder do
       embeds: [
         %Embed{
           title: "Play reversed!",
-          description: "The direction of play has been reversed.",
+          description: "The direction of play has been reversed."
         }
         |> footer_color(responder)
       ],
@@ -428,7 +461,7 @@ defmodule FfcEx.GameResponder do
       embeds: [
         %Embed{
           title: "Color changed!",
-          description: "The color has changed to **#{color}**.",
+          description: "The color has changed to **#{color}**."
         }
         |> footer_color(responder)
       ],
@@ -449,7 +482,7 @@ defmodule FfcEx.GameResponder do
       embeds: [
         %Embed{
           title: "Drawn cards",
-          description: "#{Format.uname(uid)} has been forced to draw #{amt} cards!",
+          description: "#{Format.uname(uid)} has been forced to draw #{amt} cards!"
         }
         |> footer_color(responder)
       ],
@@ -502,13 +535,13 @@ defmodule FfcEx.GameResponder do
     )
   end
 
-  defp respond({:wild4_challenge, challenged, challenger, won?}, responder) do
+  defp respond({:wild4_challenge, challenging, challenged, won?}, responder) do
     broadcast(responder,
       embeds: [
         %Embed{
           title: "Wild Draw 4 challenge",
           description: """
-          #{Format.uname(challenger)} has challenged the Wild Draw Four played \
+          #{Format.uname(challenging)} has challenged the Wild Draw Four played \
           by #{Format.uname(challenged)}, and has #{if won?, do: "won", else: "lost"} \
           the challenge.
           """

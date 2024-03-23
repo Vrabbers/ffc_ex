@@ -45,6 +45,12 @@ defmodule FfcEx.BaseConsumer do
           Broadcaster.send_messages(term, msg.author.id)
           Api.create_reaction!(msg.channel_id, msg.id, "✅")
 
+        :chat_too_long ->
+          Api.create_reaction!(msg.channel_id, msg.id, "❗")
+
+        :ratelimited ->
+          Api.create_reaction!(msg.channel_id, msg.id, "⏰")
+
         term ->
           Broadcaster.send_messages(term, msg.author.id)
       end
