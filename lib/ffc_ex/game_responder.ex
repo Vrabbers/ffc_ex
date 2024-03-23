@@ -214,24 +214,16 @@ defmodule FfcEx.GameResponder do
     end
   end
 
-  @impl true
-  def handle_call({:cmd, uid, :draw}, _from, responder) do
-    do_player_command(responder, uid, &Game.draw/2)
-  end
-
-  @impl true
-  def handle_call({:cmd, uid, :pass}, _from, responder) do
-    do_player_command(responder, uid, &Game.pass/2)
-  end
-
-  @impl true
-  def handle_call({:cmd, uid, :challenge}, _from, responder) do
-    do_player_command(responder, uid, &Game.challenge/2)
-  end
-
-  @impl true
-  def handle_call({:cmd, uid, :ffc}, _from, responder) do
-    do_player_command(responder, uid, &Game.call_ffc/2)
+  for {cmd, fun} <- [
+        {:draw, &Game.draw/2},
+        {:pass, &Game.pass/2},
+        {:challenge, &Game.challenge/2},
+        {:ffc, &Game.call_ffc/2}
+      ] do
+    @impl true
+    def handle_call({:cmd, uid, unquote(cmd)}, _from, responder) do
+      do_player_command(responder, uid, unquote(fun))
+    end
   end
 
   @impl true
