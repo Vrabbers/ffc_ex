@@ -1,4 +1,4 @@
-FROM elixir:1.14-alpine AS build
+FROM elixir:1.16-alpine AS build
 
 RUN mkdir /app
 WORKDIR /app
@@ -14,7 +14,7 @@ RUN mix local.rebar --force
 RUN mix deps.get
 RUN mix release
 
-FROM alpine:3.17 AS final
+FROM alpine:3.19 AS final
 
 RUN mkdir /app
 WORKDIR /app
