@@ -42,6 +42,7 @@ defmodule FfcEx.GameResponder do
   @impl true
   def init(lobby) do
     game = Game.init(lobby)
+    Process.flag(:trap_exit, true)
     {:ok, %{spectators: lobby.spectators, game: game, id: lobby.id}}
   end
 
@@ -50,15 +51,13 @@ defmodule FfcEx.GameResponder do
     # Although :shutdown and {:shutdown, _} are also 'normal' reasons, they indicate that this
     # decision to end the process did not arrive from myself, so we still inform the participants
     if reason != :normal do
-      Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
-        Broadcaster.broadcast_to(
-          participants(responder),
-          """
-          🔴 Unfortunately, game \##{responder.id} has closed due to an error. \
-          Use `/create` to start a new game.
-          """
-        )
-      end)
+      Broadcaster.broadcast_to(
+        participants(responder),
+        """
+        🔴 Unfortunately, game \##{responder.id} has closed due to an error. \
+        Use `/create` to start a new game.
+        """
+      )
     end
   end
 
@@ -512,7 +511,7 @@ defmodule FfcEx.GameResponder do
   end
 
   defp respond({:end, {:win, uid}}, responder) do
-    author_img_url = User.avatar_url(Api.get_user!(uid))
+    author_img_url = User.avatar_url(Api.get_user!(uid), "png")
 
     broadcast(
       responder,

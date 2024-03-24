@@ -59,21 +59,11 @@ defmodule FfcEx.Game do
     game
   end
 
-  @deprecated "acess struct directly"
-  def current_card(game) do
-    game.current_card
-  end
-
   def status(game) do
     players_cards =
       game.players |> Enum.map(fn player -> {player, length(game.hands[player])} end)
 
     {players_cards, game.current_card}
-  end
-
-  @deprecated "acess struct directly"
-  def hand(game, player) do
-    game.hands[player]
   end
 
   def start_game(game) do
