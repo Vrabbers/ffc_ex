@@ -324,7 +324,8 @@ defmodule FfcEx.Interactions do
     if reason == :shutdown or match?({:shutdown, _r}, reason) do
       case global_or_guild_cmds() do
         :global ->
-          :noop
+          Logger.info("Deregistering global interactions...")
+          Api.bulk_overwrite_global_application_commands([])
 
         {:guild, guild} ->
           Logger.info("Deregistering interactions for guild #{guild}...")

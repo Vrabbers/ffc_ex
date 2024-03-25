@@ -20,7 +20,7 @@ defmodule FfcEx.GameResponder do
   end
 
   def command(pid, uid, command) do
-    case Hammer.check_rate("game_cmd:#{uid}", :timer.seconds(10), 5) do
+    case Hammer.check_rate("game_cmd:#{uid}", :timer.seconds(6), 3) do
       {:allow, _} ->
         GenServer.call(pid, {:cmd, uid, command})
 
