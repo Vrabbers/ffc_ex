@@ -29,6 +29,14 @@ defmodule FfcEx.Game.Card do
     end
   end
 
+  @spec can_play_on_cml_draw?(t(), t()) :: boolean
+  def can_play_on_cml_draw?(card_down, card_to_play) do
+    case {card_down, card_to_play} do
+      {{:draw2, _}, {:draw2, _}} -> true
+      _ -> false
+    end
+  end
+
   def equal_nw?(card1, card2) do
     strip_wild(card1) == strip_wild(card2)
   end

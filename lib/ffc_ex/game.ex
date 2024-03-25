@@ -151,6 +151,7 @@ defmodule FfcEx.Game do
       match?({_, false}, game.called_ffc) and game.called_ffc != {player, false} ->
         {forgot_ffc, false} = game.called_ffc
         message = {:forgot_ffc_challenge, forgot_ffc, player}
+        game = %Game{game | called_ffc: nil}
         force_draw({[message], game}, forgot_ffc, 2)
 
       true ->

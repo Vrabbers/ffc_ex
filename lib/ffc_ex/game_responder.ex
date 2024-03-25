@@ -190,7 +190,7 @@ defmodule FfcEx.GameResponder do
       }
       |> footer_color(responder)
 
-    {:reply, tell(uid, embeds: embed), responder}
+    {:reply, tell(uid, embeds: [embed]), responder}
   end
 
   @impl true
@@ -311,7 +311,7 @@ defmodule FfcEx.GameResponder do
         ]
       }
       |> footer_color(responder)
-      |> put_cond_fields(conditions, hand, card)
+      |> put_cond_fields(conditions, hand, card, responder)
 
     [
       tell(uid, embeds: [embed]),
@@ -348,7 +348,7 @@ defmodule FfcEx.GameResponder do
     desc =
       if draw2_cards == "" do
         """
-        Because you have no Draw 2 cards, you have to draw the #{cml_draw} \
+        As you have no Draw 2 cards, you have to draw the #{cml_draw} \
         accumulated cards with `draw`.
         """
       else
@@ -364,7 +364,7 @@ defmodule FfcEx.GameResponder do
         description: desc
       }
       |> footer_color(responder)
-      |> put_cond_fields(conditions, hand, card)
+      |> put_cond_fields(conditions, hand, card, responder)
 
     [
       tell(uid, embeds: [embed]),
@@ -581,7 +581,7 @@ defmodule FfcEx.GameResponder do
     tell(:author, "You can't pass if you haven't drawn a card from the deck first.")
   end
 
-  defp put_cond_fields(embed, conditions, hand, current_card) do
+  defp put_cond_fields(embed, conditions, hand, current_card, responder) do
     conditions
     |> Enum.reduce(embed, fn cnd, embed ->
       case cnd do
@@ -605,13 +605,19 @@ defmodule FfcEx.GameResponder do
     end)
     |> Embed.put_field(
       "Your hand",
-      formatted_hand(hand, current_card)
+      formatted_hand(hand, current_card, responder.game.cml_draw != nil)
     )
   end
 
-  defp formatted_hand(hand, current_card) do
+  defp formatted_hand(hand, current_card, cml_draw? \\ false) do
     hand
-    |> Enum.map(fn card -> {Card.to_string(card), Card.can_play_on?(current_card, card)} end)
+    |> Enum.map(fn card ->
+      {Card.to_string(card),
+       if(cml_draw?,
+         do: Card.can_play_on_cml_draw?(current_card, card),
+         else: Card.can_play_on?(current_card, card)
+       )}
+    end)
     |> Enum.sort_by(fn {card, _} -> card end, :asc)
     |> Enum.map_join(
       " ",
