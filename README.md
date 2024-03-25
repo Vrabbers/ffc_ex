@@ -13,4 +13,4 @@ without IEx, use ``mix --no-halt``.
 
 ## Bot usage
 
-To start a game type <kbd>/create</kbd> in a guild channel. Other users can then join in by pressing the join button. Once you've got all your friends in, press `Close and start` to start the game!
+To start a game type `/create` in a guild channel. Other users can then join in by pressing the join button. Once you've got all your friends in, press <kbd>Close and start</kbd> to start the game!
