@@ -142,17 +142,17 @@ defmodule FfcEx.Game do
 
   def challenge(game, player) do
     cond do
-      current_player(game) != player ->
-        {:not_players_turn, game}
-
-      game.was_valid_wild4 != nil ->
-        wild4_challenge(game, player)
-
       match?({_, false}, game.called_ffc) and game.called_ffc != {player, false} ->
         {forgot_ffc, false} = game.called_ffc
         message = {:forgot_ffc_challenge, forgot_ffc, player}
         game = %Game{game | called_ffc: nil}
         force_draw({[message], game}, forgot_ffc, 2)
+
+      current_player(game) != player ->
+        {:not_players_turn, game}
+
+      game.was_valid_wild4 != nil ->
+        wild4_challenge(game, player)
 
       true ->
         {:cannot_ffc_challenge, game}
