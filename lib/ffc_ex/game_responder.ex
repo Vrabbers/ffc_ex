@@ -348,8 +348,8 @@ defmodule FfcEx.GameResponder do
     desc =
       if draw2_cards == "" do
         """
-        As you have no Draw 2 cards, you have to draw the #{cml_draw} \
-        accumulated cards with `draw`.
+        This turn, you have to draw the #{cml_draw} accumulated cards with `draw` because you \
+        don't have any Draw 2 cards to play.
         """
       else
         """

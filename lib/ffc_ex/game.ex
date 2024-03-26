@@ -148,10 +148,7 @@ defmodule FfcEx.Game do
         game = %Game{game | called_ffc: nil}
         force_draw({[message], game}, forgot_ffc, 2)
 
-      current_player(game) != player ->
-        {:not_players_turn, game}
-
-      game.was_valid_wild4 != nil ->
+      current_player(game) == player and game.was_valid_wild4 != nil ->
         wild4_challenge(game, player)
 
       true ->
