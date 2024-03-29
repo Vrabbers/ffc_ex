@@ -141,17 +141,14 @@ defmodule FfcEx.Game do
   end
 
   def challenge(game, player) do
-    cond do
-      match?({_, false}, game.called_ffc) and game.called_ffc != {player, false} ->
-        {forgot_ffc, false} = game.called_ffc
-        message = {:forgot_ffc_challenge, forgot_ffc, player}
-        game = %Game{game | called_ffc: nil}
-        force_draw({[message], game}, forgot_ffc, 2)
+    case game do
+      %Game{was_valid_wild4: nil, called_ffc: {forgot, false}} when forgot != player ->
+        ffc_challenge(game, player, forgot)
 
-      current_player(game) == player and game.was_valid_wild4 != nil ->
+      %Game{was_valid_wild4: {_, _}, players: [^player | _]} ->
         wild4_challenge(game, player)
 
-      true ->
+      _ ->
         {:cannot_ffc_challenge, game}
     end
   end
@@ -315,6 +312,12 @@ defmodule FfcEx.Game do
     resp = [{:drew_card, drawn_card, player, can_play_drawn}]
 
     {resp, game}
+  end
+
+  defp ffc_challenge(game, player, forgot) do
+    message = {:forgot_ffc_challenge, forgot, player}
+    game = %Game{game | called_ffc: nil}
+    force_draw({[message], game}, forgot, 2)
   end
 
   defp wild4_challenge(game, challenging_player) do
