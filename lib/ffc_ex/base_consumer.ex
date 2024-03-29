@@ -1,15 +1,13 @@
 defmodule FfcEx.BaseConsumer do
   use Nostrum.Consumer
 
+  alias FfcEx.Broadcaster
+  alias FfcEx.GameResponder
   alias FfcEx.Interactions
-  alias FfcEx.{Game, GameCmdParser, GameRegistry, PlayerRouter}
+  alias FfcEx.{GameCmdParser, GameRegistry, PlayerRouter}
   alias Nostrum.{Api, Struct.Event, Struct.User, Struct.Message}
 
   require Logger
-
-  def start_link() do
-    Consumer.start_link(__MODULE__, name: __MODULE__)
-  end
 
   @impl true
   def handle_event({:READY, %Event.Ready{v: v}, _ws_state}) do
@@ -31,21 +29,30 @@ defmodule FfcEx.BaseConsumer do
       case int do
         nil ->
           id = PlayerRouter.lookup(msg.author.id)
-          GameRegistry.get_game(id)
+          GameRegistry.get_game_responder(id)
 
         x ->
-          GameRegistry.get_game(x)
+          GameRegistry.get_game_responder(x)
       end
 
-    if game != nil and Game.part_of?(game, msg.author.id) do
-      res = Game.do_cmd(game, msg.author.id, cmd)
-
+    if game != nil and GameResponder.part_of?(game, msg.author.id) do
       if int != nil do
         PlayerRouter.set_for(msg.author.id, int)
       end
 
-      if res and match?({:chat, _}, cmd) do
-        Api.create_reaction!(msg.channel_id, msg.id, "✅")
+      case GameResponder.command(game, msg.author.id, cmd) do
+        {:green_check, term} ->
+          Broadcaster.send_messages(term, msg.author.id)
+          Api.create_reaction!(msg.channel_id, msg.id, "✅")
+
+        :chat_too_long ->
+          Api.create_reaction!(msg.channel_id, msg.id, "❗")
+
+        :ratelimited ->
+          Api.create_reaction!(msg.channel_id, msg.id, "⏰")
+
+        term ->
+          Broadcaster.send_messages(term, msg.author.id)
       end
     end
   end

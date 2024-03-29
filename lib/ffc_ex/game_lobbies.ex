@@ -1,3 +1,19 @@
+defmodule FfcEx.Lobby do
+  alias Nostrum.Struct.User
+
+  @type id() :: non_neg_integer()
+  @enforce_keys [:id, :starting_user]
+  defstruct id: nil, starting_user: nil, players: [], spectators: [], house_rules: []
+
+  @type t() :: %__MODULE__{
+          id: id(),
+          starting_user: User.id(),
+          players: [User.id()],
+          spectators: [User.id()],
+          house_rules: [atom()]
+        }
+end
+
 defmodule FfcEx.GameLobbies do
   use GenServer
 
@@ -61,6 +77,8 @@ defmodule FfcEx.GameLobbies do
     end
   end
 
+  @lobby_expire_time :timer.minutes(5)
+
   @impl true
   def handle_call({:create, int_id, int_token, user, house_rules}, _, {lobbies, current_id}) do
     lobby = %Lobby{
@@ -72,8 +90,8 @@ defmodule FfcEx.GameLobbies do
 
     lobbies = Map.put(lobbies, int_id, {lobby, int_token})
     new_id = current_id + 1
-    timeout = DateTime.add(DateTime.utc_now(), 5, :minute)
-    Process.send_after(self(), {:time_out_lobby, current_id}, 5 * 60 * 1000)
+    timeout = DateTime.add(DateTime.utc_now(), @lobby_expire_time, :millisecond)
+    Process.send_after(self(), {:time_out_lobby, current_id}, @lobby_expire_time)
     {:reply, {:new, current_id, timeout}, {lobbies, new_id}}
   end
 
@@ -85,7 +103,7 @@ defmodule FfcEx.GameLobbies do
       lobby == nil ->
         {:reply, :timeout, state}
 
-      lobby.starting_user == user || Enum.any?(lobby.players, &(&1 == user)) ->
+      lobby.starting_user == user or Enum.any?(lobby.players, &(&1 == user)) ->
         {:reply, {:already_joined, lobby.id}, state}
 
       true ->

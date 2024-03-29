@@ -5,13 +5,13 @@ defmodule FfcEx.Application do
   def start(_type, _args) do
     children = [
       {Task.Supervisor, name: FfcEx.TaskSupervisor},
-      FfcEx.Game.MessageQueue,
       FfcEx.PlayerRouter,
       FfcEx.GameRegistrySupervisor,
       FfcEx.GameLobbies,
       FfcEx.DmCache,
       FfcEx.Interactions,
       FfcEx.BaseConsumer,
+      FfcEx.ThumbnailCache
     ]
 
     opts = [strategy: :one_for_one, name: FfcEx.Supervisor]
@@ -30,7 +30,7 @@ defmodule FfcEx.GameRegistrySupervisor do
   def init([]) do
     children = [
       FfcEx.GameSupervisor,
-      FfcEx.GameRegistry
+      {Registry, keys: :unique, name: FfcEx.GameRegistry}
     ]
 
     # The registry and the supervisor are interdependent

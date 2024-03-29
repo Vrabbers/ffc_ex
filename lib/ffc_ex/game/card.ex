@@ -10,8 +10,8 @@ defmodule FfcEx.Game.Card do
   defguard is_color(col) when col in [:red, :green, :yellow, :blue]
   defguard is_wildcard(wild) when wild in [:wildcard, :wildcard_draw4]
 
-  @spec is_valid_first_card?(t()) :: boolean()
-  def is_valid_first_card?(card) do
+  @spec valid_first_card?(t()) :: boolean()
+  def valid_first_card?(card) do
     case card do
       {_first, second} when is_cardno(second) -> true
       _ -> false
@@ -25,6 +25,14 @@ defmodule FfcEx.Game.Card do
       {_, {w, _}} when is_wildcard(w) -> true
       {{w, c}, {c, _}} when is_wildcard(w) -> true
       {{a1, a2}, {b1, b2}} when a1 == b1 or a2 == b2 -> true
+      _ -> false
+    end
+  end
+
+  @spec can_play_on_cml_draw?(t(), t()) :: boolean
+  def can_play_on_cml_draw?(card_down, card_to_play) do
+    case {card_down, card_to_play} do
+      {{:draw2, _}, {:draw2, _}} -> true
       _ -> false
     end
   end
