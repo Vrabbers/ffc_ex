@@ -581,6 +581,10 @@ defmodule FfcEx.GameResponder do
     tell(:author, "You can't pass if you haven't drawn a card from the deck first.")
   end
 
+  defp respond(:cannot_call_ffc, _responder) do
+    tell(:author, "You can't call ffc right now!")
+  end
+
   defp put_cond_fields(embed, conditions, hand, current_card, responder) do
     conditions
     |> Enum.reduce(embed, fn cnd, embed ->
