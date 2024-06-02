@@ -1,6 +1,6 @@
 # FfcEx
 
-Final fantastic card built with Elixir.
+Final Fantastic Card built with Elixir.
 
 ## Instructions
 
