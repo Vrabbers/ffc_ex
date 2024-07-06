@@ -44,13 +44,9 @@ defmodule FfcEx.Interactions do
                     type: application_command_type(:chat_input)
                   }}
   def ping(interaction) do
-    latencies = Util.get_all_shard_latencies() |> Map.values()
-    heartbeat = Enum.sum(latencies) / length(latencies)
-
     embed = %Embed{
       title: "FFCex v#{Keyword.fetch!(Application.spec(:ffc_ex), :vsn)}",
       description: """
-      **Heartbeat:** #{heartbeat}ms
       **Erlang/OTP release:** #{System.otp_release()}
       **Elixir version:** #{System.version()}
       **Memory usage:** #{(:erlang.memory(:total) / 1_000_000) |> :erlang.float_to_binary(decimals: 2)}MB
@@ -260,7 +256,7 @@ defmodule FfcEx.Interactions do
 
   @spec handle(Interaction.t()) :: :ok | {:error, term()}
   def handle(interaction) do
-    case GenServer.call(__MODULE__, {:handle, interaction}) do
+    case GenServer.call(__MODULE__, {:handle, interaction.type, interaction.data}) do
       {:slash_command, fun} ->
         apply(__MODULE__, fun, [interaction])
         :ok
@@ -280,10 +276,12 @@ defmodule FfcEx.Interactions do
     {:ok, %{}}
   end
 
+  @interaction_type_slash 2
+
   @impl true
   # Handles slash commands
-  def handle_call({:handle, %Interaction{type: 2} = interaction}, _from, cmds) do
-    fun = cmds[interaction.data.id]
+  def handle_call({:handle, @interaction_type_slash, interaction_data}, _from, cmds) do
+    fun = cmds[interaction_data.id]
 
     if fun != nil do
       {:reply, {:slash_command, fun}, cmds}
@@ -292,14 +290,16 @@ defmodule FfcEx.Interactions do
     end
   end
 
+  @interaction_type_component 3
+
   # Component responses
-  def handle_call({:handle, %Interaction{type: 3} = interaction}, _from, cmds) do
-    custom_id = interaction.data.custom_id
+  def handle_call({:handle, @interaction_type_component, interaction_data}, _from, cmds) do
+    custom_id = interaction_data.custom_id
     {:reply, {:handle_component, custom_id}, cmds}
   end
 
   @impl true
-  def handle_call({:handle, _interaction}, _from, cmds) do
+  def handle_call({:handle, _interaction_type, _interaction_data}, _from, cmds) do
     {:reply, {:error, :unknown_interaction}, cmds}
   end
 

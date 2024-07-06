@@ -29,7 +29,7 @@ defmodule FfcEx.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:nostrum, "~> 0.8"},
+      {:nostrum, "~> 0.9.1"},
       {:hammer, "~> 6.2.1"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
