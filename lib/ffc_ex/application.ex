@@ -11,7 +11,8 @@ defmodule FfcEx.Application do
       FfcEx.DmCache,
       FfcEx.Interactions,
       FfcEx.BaseConsumer,
-      FfcEx.ThumbnailCache
+      FfcEx.ThumbnailCache,
+      FfcEx.RateLimit
     ]
 
     opts = [strategy: :one_for_one, name: FfcEx.Supervisor]
@@ -36,4 +37,8 @@ defmodule FfcEx.GameRegistrySupervisor do
     # The registry and the supervisor are interdependent
     Supervisor.init(children, strategy: :one_for_all)
   end
+end
+
+defmodule FfcEx.RateLimit do
+  use Hammer, backend: :atomic, algorithm: :fix_window
 end

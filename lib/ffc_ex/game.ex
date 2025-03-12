@@ -362,7 +362,7 @@ defmodule FfcEx.Game do
         if length(game.players) == 2 do
           {resp, game} |> reverse_playing_order() |> advance_player()
         else
-          {resp, game} |> reverse_playing_order()
+          {resp, game} |> reverse_playing_order() |> advance_turn()
         end
 
       {_, :draw2} ->
@@ -405,7 +405,11 @@ defmodule FfcEx.Game do
   defp advance_player({resp, game}) do
     [first | others] = game.players
     players = others ++ [first]
-    {resp, %Game{game | players: players, drawn_card: nil}}
+    {resp, %Game{game | players: players}} |> advance_turn()
+  end
+
+  defp advance_turn({resp, game}) do
+    {resp, %Game{game | drawn_card: nil}}
   end
 
   defp advance_twice(game_resp) do

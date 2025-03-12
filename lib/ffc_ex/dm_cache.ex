@@ -24,7 +24,7 @@ defmodule FfcEx.DmCache do
 
   @impl true
   def handle_call({:create, user}, _from, table) do
-    case Api.create_dm(user) do
+    case Api.User.create_dm(user) do
       {:ok, channel} ->
         :ets.insert(table, {user, channel.id})
         Process.send_after(self(), {:invalidate, user}, :timer.hours(1))

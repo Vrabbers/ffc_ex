@@ -1,6 +1,6 @@
 defmodule FfcEx.Format do
   def uname(uid) when is_integer(uid) do
-    {:ok, user} = Nostrum.Api.get_user(uid)
+    {:ok, user} = Nostrum.Api.User.get(uid)
     uname(user)
   end
 

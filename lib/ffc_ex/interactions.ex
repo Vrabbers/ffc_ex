@@ -3,10 +3,9 @@ defmodule FfcEx.Interactions do
   use GenServer
 
   alias FfcEx.Format
-  alias FfcEx.Util
   alias FfcEx.Broadcaster
   alias FfcEx.GameLobbies
-  alias Nostrum.{Api, Struct.Embed, Struct.Interaction, Struct.User, Util}
+  alias Nostrum.{Api, Struct.Embed, Struct.Interaction, Struct.User}
 
   import FfcEx.Constants
   require Logger
@@ -44,6 +43,7 @@ defmodule FfcEx.Interactions do
                     type: application_command_type(:chat_input)
                   }}
   def ping(interaction) do
+    {:ok, self} = Api.Self.get()
     embed = %Embed{
       title: "FFCex v#{Keyword.fetch!(Application.spec(:ffc_ex), :vsn)}",
       description: """
@@ -54,10 +54,10 @@ defmodule FfcEx.Interactions do
       """,
       timestamp: DateTime.to_iso8601(DateTime.utc_now()),
       color: Application.fetch_env!(:ffc_ex, :color),
-      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
+      thumbnail: %Embed.Thumbnail{url: User.avatar_url(self, "png")}
     }
 
-    Api.create_interaction_response!(interaction, %{
+    {:ok} = Api.Interaction.create_response(interaction, %{
       type: interaction_callback_type(:channel_message_with_source),
       data: %{embeds: [embed]}
     })
@@ -125,6 +125,8 @@ defmodule FfcEx.Interactions do
     {:new, id, timeout} =
       GameLobbies.create(interaction.id, interaction.token, interaction.user.id, house_rules)
 
+    {:ok, self} = Api.Self.get()
+
     embed = %Embed{
       title: "Final Fantastic Card",
       description: """
@@ -134,10 +136,10 @@ defmodule FfcEx.Interactions do
       """,
       timestamp: DateTime.to_iso8601(DateTime.utc_now()),
       color: Application.fetch_env!(:ffc_ex, :color),
-      thumbnail: %Embed.Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
+      thumbnail: %Embed.Thumbnail{url: User.avatar_url(self, "png")}
     }
 
-    Api.create_interaction_response!(interaction, %{
+    {:ok} = Api.Interaction.create_response(interaction, %{
       type: interaction_callback_type(:channel_message_with_source),
       data: %{
         embeds: [embed],
@@ -166,7 +168,7 @@ defmodule FfcEx.Interactions do
           {"You have already joined \##{id}.", message_flags(:ephemeral)}
       end
 
-    Api.create_interaction_response!(interaction, %{
+    {:ok} = Api.Interaction.create_response(interaction, %{
       type: interaction_callback_type(:channel_message_with_source),
       data: %{content: msg, flags: flags}
     })
@@ -190,7 +192,7 @@ defmodule FfcEx.Interactions do
           {"You are already spectating this game.", message_flags(:ephemeral)}
       end
 
-    Api.create_interaction_response!(interaction, %{
+    {:ok} = Api.Interaction.create_response(interaction, %{
       type: interaction_callback_type(:channel_message_with_source),
       data: %{content: msg, flags: flags}
     })
@@ -214,7 +216,7 @@ defmodule FfcEx.Interactions do
           {"You are not in this game.", message_flags(:ephemeral)}
       end
 
-    Api.create_interaction_response!(interaction, %{
+    {:ok} = Api.Interaction.create_response(interaction, %{
       type: interaction_callback_type(:channel_message_with_source),
       data: %{content: msg, flags: flags}
     })
@@ -238,7 +240,7 @@ defmodule FfcEx.Interactions do
           {"The game was not able to start because the amount of players was invalid.", 0}
       end
 
-    Api.create_interaction_response!(
+    {:ok} = Api.Interaction.create_response(
       interaction,
       %{
         type: interaction_callback_type(:channel_message_with_source),
@@ -325,11 +327,11 @@ defmodule FfcEx.Interactions do
       case global_or_guild_cmds() do
         :global ->
           Logger.info("Deregistering global interactions...")
-          Api.bulk_overwrite_global_application_commands([])
+          Api.ApplicationCommand.bulk_overwrite_global_commands([])
 
         {:guild, guild} ->
           Logger.info("Deregistering interactions for guild #{guild}...")
-          {:ok, _} = Api.bulk_overwrite_guild_application_commands(guild, [])
+          {:ok, _} = Api.ApplicationCommand.bulk_overwrite_guild_commands(guild, [])
       end
     end
   end
@@ -373,13 +375,13 @@ defmodule FfcEx.Interactions do
 
   defp prepare_guild_app_cmds(debug_guild) do
     Logger.info("Registering slash commands for guild #{debug_guild}")
-    Api.bulk_overwrite_global_application_commands([])
-    Api.bulk_overwrite_guild_application_commands(debug_guild, Map.values(slash_commands()))
+    Api.ApplicationCommand.bulk_overwrite_global_commands([])
+    Api.ApplicationCommand.bulk_overwrite_guild_commands(debug_guild, Map.values(slash_commands()))
   end
 
   defp prepare_global_app_cmds() do
     Logger.info("Registered slash commands globally")
-    Api.bulk_overwrite_global_application_commands(Map.values(slash_commands()))
+    Api.ApplicationCommand.bulk_overwrite_global_commands(Map.values(slash_commands()))
   end
 
   defp os_str() do

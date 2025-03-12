@@ -26,7 +26,9 @@ defmodule FfcEx.ThumbnailCache do
         [] -> must_cache_url_send(channel, message)
       end
     else
-      _ -> Nostrum.Api.create_message!(channel, message)
+      _ ->
+        {:ok, msg} = Nostrum.Api.Message.create(channel, message)
+        msg
     end
   end
 
@@ -38,7 +40,8 @@ defmodule FfcEx.ThumbnailCache do
         [%Embed{embed | thumbnail: %Thumbnail{url: cached_url}}]
       end)
 
-    Nostrum.Api.create_message!(channel, message)
+    {:ok, msg} = Nostrum.Api.Message.create(channel, message)
+    msg
   end
 
   defp must_cache_url_send(channel, message) do
@@ -52,9 +55,10 @@ defmodule FfcEx.ThumbnailCache do
         [%Embed{embed | thumbnail: %Thumbnail{url: "attachment://#{Path.basename(path)}"}}]
       end)
 
-    out_message = Nostrum.Api.create_message!(channel, message)
+    {:ok, out_message} = Nostrum.Api.Message.create(channel, message)
     [embed] = out_message.embeds
     url = embed.thumbnail.url
     GenServer.call(__MODULE__, {:cache_url, path, url})
+    out_message
   end
 end

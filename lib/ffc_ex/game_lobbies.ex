@@ -190,7 +190,7 @@ defmodule FfcEx.GameLobbies do
         {_lobby_token, new_lobbies} = Map.pop(lobbies, int_id)
 
         Task.Supervisor.start_child(FfcEx.TaskSupervisor, fn ->
-          Api.create_followup_message!(
+          {:ok, _} = Api.Interaction.create_followup_message(
             token,
             %{content: "Lobby \##{lobby.id} timed out and has been disbanded."}
           )

@@ -47,7 +47,7 @@ defmodule FfcEx.Broadcaster do
     if Keyword.keyword?(message) do
       ThumbnailCache.send_with_thumbnail_caching!(channel, message)
     else
-      Nostrum.Api.create_message!(channel, message)
+      {:ok, _} = Nostrum.Api.Message.create(channel, message)
     end
   end
 end

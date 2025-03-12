@@ -20,7 +20,7 @@ defmodule FfcEx.GameResponder do
   end
 
   def command(pid, uid, command) do
-    case Hammer.check_rate("game_cmd:#{uid}", :timer.seconds(6), 3) do
+    case FfcEx.RateLimit.hit("game_cmd:#{uid}", :timer.seconds(6), 2) do
       {:allow, _} ->
         GenServer.call(pid, {:cmd, uid, command})
 
@@ -66,7 +66,7 @@ defmodule FfcEx.GameResponder do
     responses =
       for user <- participants(responder) do
         {:ok, dm_channel} = FfcEx.DmCache.create(user)
-        {Nostrum.Api.create_message(dm_channel, "Starting game \##{responder.id}..."), user}
+        {Nostrum.Api.Message.create(dm_channel, "Starting game \##{responder.id}..."), user}
       end
 
     if Enum.all?(responses, fn {{resp, _}, _} -> resp == :ok end) do
@@ -287,6 +287,7 @@ defmodule FfcEx.GameResponder do
   end
 
   defp respond(:welcome, responder) do
+    {:ok, self} = Api.Self.get()
     embed =
       %Embed{
         title: "Final Fantastic Card",
@@ -295,7 +296,7 @@ defmodule FfcEx.GameResponder do
 
         [Click here to view game instructions!](https://vrabbers.github.io/ffc_ex/index.html)
         """,
-        thumbnail: %Thumbnail{url: User.avatar_url(Api.get_current_user!(), "png")}
+        thumbnail: %Thumbnail{url: User.avatar_url(self, "png")}
       }
       |> footer_color(responder)
 
@@ -511,7 +512,8 @@ defmodule FfcEx.GameResponder do
   end
 
   defp respond({:end, {:win, uid}}, responder) do
-    author_img_url = User.avatar_url(Api.get_user!(uid), "png")
+    {:ok, author} = Api.User.get(uid)
+    author_img_url = User.avatar_url(author, "png")
 
     broadcast(
       responder,

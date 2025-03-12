@@ -4,8 +4,8 @@ defmodule FfcEx.MixProject do
   def project do
     [
       app: :ffc_ex,
-      version: "1.2.2",
-      elixir: "~> 1.16",
+      version: "1.2.3",
+      elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
@@ -29,8 +29,8 @@ defmodule FfcEx.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:nostrum, "~> 0.9.1"},
-      {:hammer, "~> 6.2.1"},
+      {:nostrum, "~> 0.10"},
+      {:hammer, "~> 7.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
