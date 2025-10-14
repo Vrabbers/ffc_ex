@@ -39,7 +39,7 @@ body {
     min-height: var(--vh);
 }
 
-#main {
+#page {
     background-color: var(--white);
     color: var(--black);
     width: 50em;
@@ -52,7 +52,7 @@ body {
     justify-content: stretch;
 }
 
-#pagehead {
+header {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -66,17 +66,17 @@ body {
     letter-spacing: -3px;
 }
 
-#pagehead span {
+header span {
     font-size: 40pt;
 }
 
-#pagehead .link a {
+header .link a {
     color: var(--white);
     padding: 0 10px 0 10px;
     text-decoration: none;
 }
 
-#page {
+main {
     padding: 1em; 
     padding-bottom: 0;
     flex-grow: 2;
@@ -124,7 +124,6 @@ td, th, caption {
 
 b {
     font-weight: 500;
-    color: var(--color);
 }
 
 hr {
@@ -132,13 +131,12 @@ hr {
     margin: 1em 0 0 0
 }
 
-#footer {
+footer {
     text-align: center;
     font-size: 0.8em;
     margin: 0;
     justify-self: self-end;
     flex-grow: 0;
-    margin-bottom: -1em;
     font-style: italic;
 }
 
